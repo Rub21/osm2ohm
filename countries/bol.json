@@ -1,0 +1,11 @@
+{
+  "name": "bolivia",
+  "iso_a2": "BO",
+  "iso_a3": "BOL",
+  "bbox": {
+    "min_lon": -70.0,
+    "min_lat": -23.0,
+    "max_lon": -57.0,
+    "max_lat": -9.0
+  }
+}

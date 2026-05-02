@@ -1,0 +1,38 @@
+{
+  "_comment": "Rules to identify deleted OSM objects that are good candidates for OpenHistoricalMap (OHM).",
+
+  "country": "bol",
+  "_country_comment": "ISO_A3 (lowercase). Loads countries/<iso_a3>.json for the bbox. Set to null to process the whole planet.",
+
+  "object_types": ["node", "way"],
+
+  "min_versions": 5,
+  "min_distinct_users": 3,
+  "min_lifetime_days": 180,
+  "min_age_at_deletion_days": 365,
+
+  "must_be_deleted": true,
+  "exclude_deletions_by_creator": true,
+
+  "required_tags_any": [
+    "name",
+    "name:es",
+    "name:en",
+    "historic",
+    "heritage",
+    "building",
+    "amenity",
+    "tourism",
+    "start_date",
+    "end_date",
+    "abandoned",
+    "ruins",
+    "demolished"
+  ],
+
+  "exclude_tags_keys": ["fixme", "FIXME"],
+
+  "min_tag_count_last_visible": 3,
+
+  "way_min_nodes": 3
+}
