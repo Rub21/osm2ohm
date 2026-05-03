@@ -1,9 +1,6 @@
 {
   "_comment": "Rules to identify deleted OSM objects that are good candidates for OpenHistoricalMap (OHM).",
 
-  "country": "bol",
-  "_country_comment": "ISO_A3 (lowercase). Loads countries/<iso_a3>.json for the bbox. Set to null to process the whole planet.",
-
   "object_types": ["node", "way"],
 
   "min_versions": 5,
@@ -14,23 +11,33 @@
   "must_be_deleted": true,
   "exclude_deletions_by_creator": true,
 
+  "_tags_comment": "Trailing '*' = prefix match. e.g. 'name:*' matches name:es, name:de, name:zh, etc.",
   "required_tags_any": [
-    "name",
-    "name:es",
-    "name:en",
-    "historic",
-    "heritage",
-    "building",
-    "amenity",
-    "tourism",
-    "start_date",
-    "end_date",
-    "abandoned",
-    "ruins",
-    "demolished"
+    "name", "name:*", "old_name", "old_name:*", "alt_name", "alt_name:*", "loc_name",
+
+    "historic", "historic:*", "heritage", "heritage:*",
+    "memorial", "monument", "ruins", "ruins:*", "archaeological_site",
+
+    "building", "building:*",
+
+    "amenity", "tourism", "leisure", "shop", "office", "craft",
+
+    "highway", "railway", "aeroway", "waterway", "bridge", "tunnel", "ford",
+
+    "landuse", "natural", "place", "boundary", "boundary:*",
+
+    "man_made", "power", "military", "industrial",
+
+    "religion", "denomination",
+
+    "start_date", "end_date", "opening_date", "construction_date",
+
+    "abandoned", "abandoned:*", "disused", "disused:*",
+    "demolished", "demolished:*", "destroyed", "destroyed:*",
+    "razed", "razed:*", "was:*", "removed:*"
   ],
 
-  "exclude_tags_keys": ["fixme", "FIXME"],
+  "exclude_tags_keys": ["fixme", "FIXME", "note", "todo"],
 
   "min_tag_count_last_visible": 3,
 

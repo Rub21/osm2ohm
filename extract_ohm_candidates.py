@@ -18,13 +18,40 @@ Usage (spark-submit on EMR):
 
 import argparse
 import json
+import re
 
 import boto3
 from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F
 
 
+def _split_keys(keys):
+    """Split a list of keys into (exact, prefixes). A trailing '*' marks a prefix."""
+    exact = [k for k in keys if not k.endswith("*")]
+    prefixes = [k[:-1] for k in keys if k.endswith("*")]
+    return exact, prefixes
+
+
+def _has_any(tag_keys_col, keys):
+    """True if any tag key matches an exact key OR starts with any prefix."""
+    exact, prefixes = _split_keys(keys)
+    conds = []
+    if exact:
+        conds.append(F.arrays_overlap(tag_keys_col, F.array(*[F.lit(k) for k in exact])))
+    if prefixes:
+        pattern = "|".join(f"^{re.escape(p)}" for p in prefixes)
+        conds.append(F.exists(tag_keys_col, lambda k: k.rlike(pattern)))
+    if not conds:
+        return F.lit(True)
+    out = conds[0]
+    for c in conds[1:]:
+        out = out | c
+    return out
+
+
 def _read_json(uri: str) -> dict:
+    """Read a small JSON file from s3:// or a local path. boto3 is provided
+    by the bootstrap (libs.sh) and authenticates via the EC2 instance profile."""
     if uri.startswith("s3://"):
         _, _, rest = uri.partition("s3://")
         bucket, _, key = rest.partition("/")
@@ -34,38 +61,28 @@ def _read_json(uri: str) -> dict:
         return json.load(fh)
 
 
-def load_rules(rules_uri: str, countries_base_uri: str) -> dict:
-    rules = _read_json(rules_uri)
-
-    country = rules.get("country")
-    if country:
-        country_uri = f"{countries_base_uri.rstrip('/')}/{country}.json"
-        country_def = _read_json(country_uri)
-        rules["bbox"] = country_def["bbox"]
-        rules["_country_meta"] = country_def
-    else:
-        rules["bbox"] = None
-    return rules
+def load_rules(rules_uri: str) -> dict:
+    return _read_json(rules_uri)
 
 
-def build_pipeline(spark: SparkSession, history_uri: str, rules: dict):
+def build_pipeline(spark: SparkSession, history_uri: str, rules: dict,
+                   sample_rate: float = 1.0):
     df = spark.read.orc(history_uri)
 
     # ------------------------------------------------------------------
-    # 1) Filter by type and bbox (only nodes carry lat/lon; ways/relations don't).
+    # 0) Optional sampling for fast iteration. We hash by (type, id) so
+    # ALL versions of a sampled object stay together — otherwise the
+    # window/aggregations downstream would see incomplete history.
+    # ------------------------------------------------------------------
+    if sample_rate < 1.0:
+        bucket = max(int(round(1.0 / sample_rate)), 2)
+        df = df.filter(F.abs(F.hash("type", "id")) % bucket == 0)
+        print(f"[osm2ohm] sampling 1/{bucket} of objects (~{sample_rate*100:.3f}%)")
+
+    # ------------------------------------------------------------------
+    # 1) Filter by type only.
     # ------------------------------------------------------------------
     df = df.filter(F.col("type").isin(rules["object_types"]))
-
-    bbox = rules.get("bbox")
-    if bbox:
-        in_bbox = (
-            (F.col("type") != "node")
-            | (
-                F.col("lat").between(bbox["min_lat"], bbox["max_lat"])
-                & F.col("lon").between(bbox["min_lon"], bbox["max_lon"])
-            )
-        )
-        df = df.filter(in_bbox)
 
     # ------------------------------------------------------------------
     # 2) Group by (type, id): each row is a version.
@@ -136,18 +153,16 @@ def build_pipeline(spark: SparkSession, history_uri: str, rules: dict):
     if rules.get("exclude_deletions_by_creator"):
         cond &= F.col("creator_uid") != F.col("last_uid")
 
-    # tags: array<struct<key,value>>  -> extract the set of keys
-    tag_keys = F.transform(F.col("good_tags"), lambda t: t["key"])
+    # tags: map<string,string> in osm-pds ORC -> extract the set of keys
+    tag_keys = F.map_keys(F.col("good_tags"))
 
     required_any = rules.get("required_tags_any") or []
     if required_any:
-        has_any = F.arrays_overlap(tag_keys, F.array(*[F.lit(k) for k in required_any]))
-        cond &= has_any
+        cond &= _has_any(tag_keys, required_any)
 
     excluded = rules.get("exclude_tags_keys") or []
     if excluded:
-        has_excluded = F.arrays_overlap(tag_keys, F.array(*[F.lit(k) for k in excluded]))
-        cond &= ~has_excluded
+        cond &= ~_has_any(tag_keys, excluded)
 
     cond &= F.size(F.col("good_tags")) >= rules["min_tag_count_last_visible"]
 
@@ -181,19 +196,23 @@ def main():
                         help="ORC with the OSM history (s3a://osm-pds/planet-history/history-latest.orc)")
     parser.add_argument("--rules_uri", required=True,
                         help="rules.json (local or s3://...)")
-    parser.add_argument("--countries_uri", required=True,
-                        help="Base path holding <country>.json files (local dir or s3://bucket/prefix)")
     parser.add_argument("--output_uri", required=True,
                         help="Parquet destination for the candidates")
+    parser.add_argument("--sample_rate", type=float, default=1.0,
+                        help="Fraction of objects to keep (1/N hash sampling). "
+                             "1.0 = full dataset; 0.001 = ~0.1%% (smoke test).")
     args = parser.parse_args()
 
-    rules = load_rules(args.rules_uri, args.countries_uri)
+    rules = load_rules(args.rules_uri)
 
     spark = (SparkSession.builder
              .appName("osm2ohm-extract-candidates")
              .getOrCreate())
 
-    candidates = build_pipeline(spark, args.history_uri, rules)
+    candidates = build_pipeline(
+        spark, args.history_uri, rules,
+        sample_rate=args.sample_rate,
+    )
 
     (candidates
         .write.mode("overwrite")

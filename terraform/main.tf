@@ -20,6 +20,16 @@ provider "aws" {
   region = var.region
 }
 
+# ----------------------------------------------------------------
+# AWS Academy Learner Lab profile
+# This config is tuned to the sandbox restrictions:
+#   - cannot create IAM roles -> use the pre-existing LabRole
+#   - cannot edit EMR Block Public Access -> stick to port 22 only
+#   - limited instance types and quota -> m5.large + 1 core node
+# If you ever move to a real AWS account, set service_role,
+# instance_profile and instance sizes back to bigger ones.
+# ----------------------------------------------------------------
+
 # ---------- Variables ----------
 variable "region" {
   default = "us-east-1"
@@ -37,16 +47,36 @@ variable "bucket_name" {
   default = "osm2ohm-rub21"
 }
 
+variable "service_role" {
+  description = "EMR service role. Both Academy and real accounts have 'EMR_DefaultRole' pre-created."
+  default     = "EMR_DefaultRole"
+}
+
+variable "instance_profile" {
+  description = "EC2 instance profile used by EMR nodes."
+  default     = "EMR_EC2_DefaultRole"
+}
+
 variable "master_instance_type" {
   default = "m5.xlarge"
 }
 
 variable "core_instance_type" {
-  default = "m5.2xlarge"
+  default = "m5.xlarge"
 }
 
 variable "core_instance_count" {
-  default = 3
+  default = 2
+}
+
+variable "auto_terminate_on_completion" {
+  type    = bool
+  default = true
+}
+
+variable "idle_timeout_seconds" {
+  type    = number
+  default = 600
 }
 
 # ---------- SSH Key Pair ----------
@@ -70,12 +100,12 @@ resource "local_file" "private_key" {
 resource "aws_emr_cluster" "cluster" {
   name          = var.cluster_name
   release_label = var.release_label
-  applications  = ["Spark", "JupyterHub"]
+  applications  = ["Spark"]
 
-  service_role = "EMR_DefaultRole"
+  service_role = var.service_role
 
   ec2_attributes {
-    instance_profile = "EMR_EC2_DefaultRole"
+    instance_profile = var.instance_profile
     key_name         = aws_key_pair.emr.key_name
   }
 
@@ -89,11 +119,11 @@ resource "aws_emr_cluster" "cluster" {
   }
 
   auto_termination_policy {
-    idle_timeout = 3600
+    idle_timeout = var.idle_timeout_seconds
   }
 
   bootstrap_action {
-    name = "Install Python libs"
+    name = "noop"
     path = "s3://${var.bucket_name}/bootstrap/libs.sh"
   }
 
@@ -109,10 +139,6 @@ resource "aws_emr_cluster" "cluster" {
 
   log_uri = "s3://${var.bucket_name}/logs/"
 
-  # Auto-launch the Spark job as soon as the cluster is ready.
-  # client mode keeps the driver on the master so its stdout/stderr land in
-  # the step log (s3://.../logs/<cluster>/steps/<step>/stderr.gz) and are
-  # also tailable live via SSH at /mnt/var/log/hadoop/steps/<step>/stderr.
   step {
     name              = "extract-ohm-candidates"
     action_on_failure = "CONTINUE"
@@ -125,76 +151,26 @@ resource "aws_emr_cluster" "cluster" {
         "s3://${var.bucket_name}/scripts/extract_ohm_candidates.py",
         "--history_uri", "s3a://osm-pds/planet-history/history-latest.orc",
         "--rules_uri", "s3://${var.bucket_name}/scripts/rules.json",
-        "--countries_uri", "s3://${var.bucket_name}/countries",
         "--output_uri", "s3://${var.bucket_name}/output/ohm_candidates/",
       ]
     }
   }
 
-  # The cluster keeps running after the step finishes (idle timeout handles
-  # shutdown). We also tell terraform to ignore step drift so re-applies
-  # don't try to recreate the cluster just because a step ran.
-  keep_job_flow_alive_when_no_steps = true
+  keep_job_flow_alive_when_no_steps = !var.auto_terminate_on_completion
 
   lifecycle {
     ignore_changes = [step]
   }
 }
 
-# ---------- Open port 9443 (JupyterHub) ----------
-resource "aws_security_group_rule" "jupyterhub" {
-  type              = "ingress"
-  from_port         = 9443
-  to_port           = 9443
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_emr_cluster.cluster.ec2_attributes[0].emr_managed_master_security_group
-  description       = "JupyterHub access"
-}
-
-# ---------- Open port 22 (SSH) ----------
-resource "aws_security_group_rule" "ssh" {
-  type              = "ingress"
-  from_port         = 22
-  to_port           = 22
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_emr_cluster.cluster.ec2_attributes[0].emr_managed_master_security_group
-  description       = "SSH access"
-}
-
-# ---------- Open port 8088 (YARN ResourceManager UI) ----------
-resource "aws_security_group_rule" "yarn_ui" {
-  type              = "ingress"
-  from_port         = 8088
-  to_port           = 8088
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_emr_cluster.cluster.ec2_attributes[0].emr_managed_master_security_group
-  description       = "YARN ResourceManager UI"
-}
-
-# ---------- Open port 18080 (Spark History Server) ----------
-resource "aws_security_group_rule" "spark_history" {
-  type              = "ingress"
-  from_port         = 18080
-  to_port           = 18080
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_emr_cluster.cluster.ec2_attributes[0].emr_managed_master_security_group
-  description       = "Spark History Server UI"
-}
-
-# ---------- Open port 20888 (Spark Application UI proxy via YARN) ----------
-resource "aws_security_group_rule" "spark_app_proxy" {
-  type              = "ingress"
-  from_port         = 20888
-  to_port           = 20888
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_emr_cluster.cluster.ec2_attributes[0].emr_managed_master_security_group
-  description       = "Spark application UI proxied through YARN"
-}
+# SSH (port 22) ingress rule is NOT managed by Terraform on purpose.
+# EMR creates and reuses two persistent SGs across clusters in the same
+# region (`ElasticMapReduce-master` and `ElasticMapReduce-slave`). The
+# port 22 rule, once added (manually or by an earlier apply), survives
+# cluster termination, so trying to add it again fails with
+# "InvalidPermission.Duplicate". If you ever wipe those SGs, run:
+#   aws ec2 authorize-security-group-ingress \
+#     --group-id <master-sg-id> --protocol tcp --port 22 --cidr 0.0.0.0/0
 
 # ---------- Outputs ----------
 output "cluster_id" {
@@ -205,20 +181,8 @@ output "master_dns" {
   value = aws_emr_cluster.cluster.master_public_dns
 }
 
-output "jupyter_url" {
-  value = "https://${aws_emr_cluster.cluster.master_public_dns}:9443"
-}
-
 output "ssh_command" {
   value = "ssh -i ${path.module}/emr-key.pem hadoop@${aws_emr_cluster.cluster.master_public_dns}"
-}
-
-output "yarn_ui" {
-  value = "http://${aws_emr_cluster.cluster.master_public_dns}:8088"
-}
-
-output "spark_history_ui" {
-  value = "http://${aws_emr_cluster.cluster.master_public_dns}:18080"
 }
 
 output "key_path" {
