@@ -1,0 +1,32 @@
+sample_001_enriched/
+.DS_Store
+.env
+out/
+
+# ── Terraform ────────────────────────────────────────────────
+# Local provider cache + state. Never commit these:
+# state files contain credentials/outputs in plaintext, and
+# .terraform/ is hundreds of MB of downloaded providers.
+**/.terraform/
+**/.terraform.tfstate.lock.info
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# tfvars commonly hold secrets — ignore by default; commit
+# specific *.tfvars by name if needed.
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# DO commit: terraform/.terraform.lock.hcl  (provider version pinning)
+
+# ── SSH / credentials ────────────────────────────────────────
+*.pem
+*.key
+*.p12
+*.pfx

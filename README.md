@@ -90,11 +90,38 @@ export AWS_DEFAULT_REGION=us-east-1
 ```
 
 It prints the JupyterHub URL, the SSH command, the `.pem` path and
-the debug UIs (YARN + Spark History). The cluster auto-terminates
-after 1h of inactivity *of no running steps*.
+the debug UIs (YARN + Spark History).
 
 The `apply` already submits the Spark job as an EMR step
 (`extract-ohm-candidates`), so you don't need to SSH in to launch it.
+
+### Lifecycle modes
+
+Two terraform variables control how the cluster shuts down:
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `auto_terminate_on_completion` | `true` | Cluster dies as soon as the step finishes (success or fail). **Fire-and-forget**. |
+| `idle_timeout_seconds` | `600` | Extra safety: cluster also dies after 10 min idle. |
+
+For iterative development (run multiple steps without recreating the
+cluster), apply with the flag flipped:
+
+```bash
+cd terraform
+terraform apply -var=auto_terminate_on_completion=false
+```
+
+In that mode you can use `./deploy_emr.sh run` to add new steps after
+editing scripts/rules.
+
+### Estimated runtime (Bolivia)
+
+With the default cluster (1 × m5.xlarge master + 3 × m5.2xlarge cores),
+a Bolivia-bbox run typically takes **30–90 minutes**. The bbox filter
+helps but the `Window.partitionBy("type", "id")` shuffles the planet
+before filtering. Watch progress in YARN UI / Spark History or via
+`./deploy_emr.sh logs`.
 
 ## Running the job
 
@@ -118,14 +145,33 @@ existing one. Edit `rules.json` (or `countries/<iso>.json`, or the
 
 ### Watching progress
 
-- `./deploy_emr.sh logs` → live `tail -F` on the master's
-  `/mnt/var/log/hadoop/steps/<step_id>/stderr` (Spark + driver output).
+- `./deploy_emr.sh logs` → smart: live `tail -F` over SSH while the
+  cluster is alive; falls back to dumping the gzipped logs from S3
+  once the cluster has auto-terminated.
+- `./deploy_emr.sh errors` → greps `ERROR/Exception/FAILED/Caused by`
+  from the S3 logs. Use this after a fire-and-forget run that died.
+- `./deploy_emr.sh ls-logs` → lists every file under
+  `s3://osm2ohm-rub21/logs/<cluster_id>/`.
 - **YARN UI** at `http://<MASTER_DNS>:8088` → running app, executors,
   memory, stage progress.
 - **Spark History** at `http://<MASTER_DNS>:18080` → finished jobs with
   full stage / task / shuffle detail.
-- S3 logs (pushed every few minutes):
-  `s3://osm2ohm-rub21/logs/<cluster_id>/steps/<step_id>/stderr.gz`.
+
+EMR pushes logs to S3 every ~5 minutes while running and one final
+push when the cluster terminates. The layout is:
+
+```
+s3://osm2ohm-rub21/logs/<cluster_id>/
+  steps/<step_id>/
+    controller.gz    <- step lifecycle (exit code, why it failed)
+    stderr.gz        <- Spark driver stderr (real errors live here)
+    stdout.gz        <- driver stdout
+    syslog.gz        <- Hadoop / YARN
+  containers/<app_id>/<container_id>/
+                     <- per-executor logs (only useful for deep debugging)
+  node/<instance_id>/
+                     <- system / bootstrap logs
+```
 
 ### Manual spark-submit (optional)
 

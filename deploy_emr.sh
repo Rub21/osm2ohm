@@ -44,6 +44,28 @@ if [[ "${KEEP_CLUSTER_ALIVE:-false}" == "true" ]]; then
   echo ">> KEEP_CLUSTER_ALIVE=true -> cluster NO se auto-destruye (idle 1h)"
 fi
 
+# Sampling rate for the auto-step (0.001 = smoke test, 1.0 = full planet).
+if [[ -n "${SAMPLE_RATE:-}" ]]; then
+  TF_EXTRA_VARS+=(-var=sample_rate=${SAMPLE_RATE})
+  echo ">> SAMPLE_RATE=${SAMPLE_RATE} -> step procesa ~$(awk "BEGIN {print ${SAMPLE_RATE}*100}")% del planeta"
+fi
+
+# Subdirectory under s3://<bucket>/output/ where this run writes results.
+if [[ -n "${OUTPUT_SUBDIR:-}" ]]; then
+  TF_EXTRA_VARS+=(-var=output_subdir=${OUTPUT_SUBDIR})
+  echo ">> OUTPUT_SUBDIR=${OUTPUT_SUBDIR} -> output en s3://$BUCKET/output/${OUTPUT_SUBDIR}/"
+fi
+
+# Pick which steps the cluster runs.  Defaults to both true.
+if [[ -n "${RUN_EXTRACT:-}" ]]; then
+  TF_EXTRA_VARS+=(-var=run_extract=${RUN_EXTRACT})
+  echo ">> RUN_EXTRACT=${RUN_EXTRACT}"
+fi
+if [[ -n "${RUN_ENRICH:-}" ]]; then
+  TF_EXTRA_VARS+=(-var=run_enrich=${RUN_ENRICH})
+  echo ">> RUN_ENRICH=${RUN_ENRICH}"
+fi
+
 prepare_aws() {
   # NOTE: Skipping `aws emr create-default-roles` because AWS Academy
   # Learner Lab blocks IAM operations. We rely on LabRole (service)
@@ -61,6 +83,7 @@ prepare_aws() {
 
   echo ">> Uploading scripts and rules to s3://$BUCKET/scripts/ ..."
   aws s3 cp "$SCRIPT_DIR/extract_ohm_candidates.py" "s3://$BUCKET/scripts/extract_ohm_candidates.py"
+  aws s3 cp "$SCRIPT_DIR/enrich_with_changesets.py" "s3://$BUCKET/scripts/enrich_with_changesets.py"
   aws s3 cp "$SCRIPT_DIR/rules.json" "s3://$BUCKET/scripts/rules.json"
 }
 

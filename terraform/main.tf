@@ -69,6 +69,36 @@ variable "core_instance_count" {
   default = 2
 }
 
+variable "ebs_size_gb" {
+  description = "EBS volume size per node. Spark shuffle/temp goes to /mnt; default EMR sizing is too small for big OSM scans."
+  type        = number
+  default     = 200
+}
+
+variable "sample_rate" {
+  description = "Fraction of OSM objects to process (1/N hash sampling). 1.0 = full planet, 0.001 = ~0.1% smoke test."
+  type        = number
+  default     = 1.0
+}
+
+variable "output_subdir" {
+  description = "Subdirectory under s3://<bucket>/output/ where this run writes its candidates."
+  type        = string
+  default     = "ohm_candidates"
+}
+
+variable "run_extract" {
+  description = "If true, the cluster runs extract_ohm_candidates.py."
+  type        = bool
+  default     = true
+}
+
+variable "run_enrich" {
+  description = "If true, the cluster runs enrich_with_changesets.py over output_subdir."
+  type        = bool
+  default     = true
+}
+
 variable "auto_terminate_on_completion" {
   type    = bool
   default = true
@@ -111,11 +141,23 @@ resource "aws_emr_cluster" "cluster" {
 
   master_instance_group {
     instance_type = var.master_instance_type
+
+    ebs_config {
+      size                 = var.ebs_size_gb
+      type                 = "gp3"
+      volumes_per_instance = 1
+    }
   }
 
   core_instance_group {
     instance_type  = var.core_instance_type
     instance_count = var.core_instance_count
+
+    ebs_config {
+      size                 = var.ebs_size_gb
+      type                 = "gp3"
+      volumes_per_instance = 1
+    }
   }
 
   auto_termination_policy {
@@ -133,26 +175,59 @@ resource "aws_emr_cluster" "cluster" {
       Properties = {
         # Allow reading the public osm-pds bucket without credentials
         "spark.hadoop.fs.s3a.bucket.osm-pds.aws.credentials.provider" = "org.apache.hadoop.fs.s3a.AnonymousAWSCredentialsProvider"
+
+        # Relax S3 change-detection (avoids 412 Precondition Failed when
+        # osm-pds rotates the *-latest.orc file mid-scan).
+        "spark.hadoop.fs.s3a.bucket.osm-pds.change.detection.mode"             = "none"
+        "spark.hadoop.fs.s3a.bucket.osm-pds.change.detection.version.required" = "false"
+
+        # Multipart re-tries for transient S3 errors during long reads.
+        "spark.hadoop.fs.s3a.attempts.maximum" = "20"
+        "spark.hadoop.fs.s3a.retry.limit"      = "20"
       }
     }
   ])
 
   log_uri = "s3://${var.bucket_name}/logs/"
 
-  step {
-    name              = "extract-ohm-candidates"
-    action_on_failure = "CONTINUE"
+  dynamic "step" {
+    for_each = var.run_extract ? [1] : []
+    content {
+      name              = "extract-ohm-candidates"
+      action_on_failure = "CONTINUE"
 
-    hadoop_jar_step {
-      jar = "command-runner.jar"
-      args = [
-        "spark-submit",
-        "--deploy-mode", "client",
-        "s3://${var.bucket_name}/scripts/extract_ohm_candidates.py",
-        "--history_uri", "s3a://osm-pds/planet-history/history-latest.orc",
-        "--rules_uri", "s3://${var.bucket_name}/scripts/rules.json",
-        "--output_uri", "s3://${var.bucket_name}/output/ohm_candidates/",
-      ]
+      hadoop_jar_step {
+        jar = "command-runner.jar"
+        args = [
+          "spark-submit",
+          "--deploy-mode", "client",
+          "s3://${var.bucket_name}/scripts/extract_ohm_candidates.py",
+          "--history_uri", "s3a://osm-pds/planet-history/history-latest.orc",
+          "--rules_uri", "s3://${var.bucket_name}/scripts/rules.json",
+          "--output_uri", "s3://${var.bucket_name}/output/${var.output_subdir}/",
+          "--sample_rate", tostring(var.sample_rate),
+        ]
+      }
+    }
+  }
+
+  dynamic "step" {
+    for_each = var.run_enrich ? [1] : []
+    content {
+      name              = "enrich-with-changesets"
+      action_on_failure = "CONTINUE"
+
+      hadoop_jar_step {
+        jar = "command-runner.jar"
+        args = [
+          "spark-submit",
+          "--deploy-mode", "client",
+          "s3://${var.bucket_name}/scripts/enrich_with_changesets.py",
+          "--candidates_uri", "s3://${var.bucket_name}/output/${var.output_subdir}/",
+          "--changesets_uri", "s3a://osm-pds/changesets/changesets-latest.orc",
+          "--output_uri",     "s3://${var.bucket_name}/output/${var.output_subdir}_enriched/",
+        ]
+      }
     }
   }
 
