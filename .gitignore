@@ -2,6 +2,7 @@ sample_001_enriched/
 .DS_Store
 .env
 out/
+web/data/
 
 # ── Terraform ────────────────────────────────────────────────
 # Local provider cache + state. Never commit these:

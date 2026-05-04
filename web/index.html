@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OSM deleted data as candidates for OHM</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    *,*::before,*::after { box-sizing: border-box; }
+    body, html { margin: 0; padding: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; color: #222; }
+
+    #app { display: grid; grid-template-columns: 340px 1fr 380px; height: 100vh; min-height: 0; }
+
+    #sidebar { display: flex; flex-direction: column; border-right: 1px solid #ddd; min-width: 0; min-height: 0; overflow: hidden; }
+    #header  { padding: .75rem 1rem; background: #f7f7f7; border-bottom: 1px solid #ddd; }
+    #header h1 { margin: 0 0 .25rem 0; font-size: 1rem; }
+    #header .stats { font-size: .8rem; color: #666; }
+
+    #filters { padding: .5rem 1rem .6rem; background: #fafafa; border-bottom: 1px solid #eee; display: flex; flex-direction: column; gap: .45rem; }
+    #filters .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+    #filters label { font-size: .75rem; color: #555; display: flex; align-items: center; gap: .25rem; cursor: pointer; }
+    #filters .search-wrap { position: relative; width: 100%; }
+    #filters .search-wrap::before {
+      content: "🔎";
+      position: absolute; left: .5rem; top: 50%; transform: translateY(-50%);
+      font-size: .7rem; opacity: .5; pointer-events: none;
+    }
+    #filters input[type="text"] {
+      padding: .35rem .5rem .35rem 1.7rem;
+      font-size: .8rem; border: 1px solid #ccc; border-radius: 4px;
+      width: 100%;
+    }
+    #filters input[type="text"]:focus { outline: none; border-color: #2080d0; box-shadow: 0 0 0 2px rgba(32, 128, 208, .2); }
+    #filters .hint { font-size: .65rem; color: #999; margin-top: -.15rem; }
+    #filters .hint code { background: #eee; padding: 0 .2rem; border-radius: 2px; font-size: .9em; }
+
+    #list { flex: 1; overflow-y: auto; }
+    .candidate { padding: .5rem .75rem; border-bottom: 1px solid #eee; cursor: pointer; border-left: 4px solid transparent; }
+    .candidate:hover    { background: #f5faff; }
+    .candidate.active   { background: #e8f4fd; border-left-color: #2080d0 !important; }
+    .candidate.strong   { border-left-color: #1a9850; }
+    .candidate.neutral  { border-left-color: #aaa; }
+    .candidate .title   { font-weight: 600; font-size: .9rem; color: #222; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .candidate .meta    { font-size: .75rem; color: #666; margin-top: .15rem; display: flex; gap: .5rem; flex-wrap: wrap; }
+    .candidate .badge   { display: inline-block; padding: 0 .35rem; border-radius: 3px; font-size: .7rem; font-weight: 600; }
+    .candidate .badge.node { background: #e0e8ff; color: #2050a0; }
+    .candidate .badge.way  { background: #ffe8d8; color: #a05020; }
+    .candidate .badge.strong { background: #d0e8d0; color: #1a6028; }
+    .candidate .comment { font-size: .75rem; color: #888; margin-top: .15rem; font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    #map { height: 100%; background: #eee; }
+
+    /* ── Details panel (right) ─────────────────────────────── */
+    #details { border-left: 1px solid #ddd; overflow-y: auto; background: #fcfcfc; min-width: 0; min-height: 0; }
+    #details .empty { padding: 2rem 1rem; text-align: center; color: #888; font-size: .85rem; }
+    #details .header { padding: .75rem 1rem; background: #f7f7f7; border-bottom: 1px solid #ddd; }
+    #details .header h2 { margin: 0; font-size: .95rem; word-break: break-word; }
+    #details .header a { color: #2080d0; text-decoration: none; }
+    #details .header a:hover { text-decoration: underline; }
+    #details .header .sub { font-size: .75rem; color: #666; margin-top: .25rem; display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+
+    #details section { padding: .75rem 1rem; border-bottom: 1px solid #eee; }
+    #details section h3 { margin: 0 0 .5rem 0; font-size: .75rem; color: #777; text-transform: uppercase; letter-spacing: .03em; }
+
+    .kv { width: 100%; border-collapse: collapse; font-size: .8rem; }
+    .kv td { padding: 2px 4px; vertical-align: top; word-break: break-word; }
+    .kv td:first-child { color: #888; width: 35%; }
+    .kv tr:hover { background: #f0f7fd; }
+
+    .links a { display: block; padding: .35rem 0; color: #2080d0; text-decoration: none; font-size: .85rem; }
+    .links a:hover { text-decoration: underline; }
+    .links a::before { content: "↗ "; color: #aaa; }
+
+    .ohm-actions { display: flex; flex-direction: column; gap: .35rem; }
+    .ohm-actions button, .ohm-actions a.btn {
+      display: block;
+      padding: .5rem .75rem;
+      font-size: .8rem;
+      font-weight: 600;
+      text-align: left;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: #fff;
+      color: #222;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .ohm-actions .btn-primary { background: #1a9850; color: #fff; border-color: #1a9850; }
+    .ohm-actions .btn-primary:hover { background: #166e3d; }
+    .ohm-actions button:hover, .ohm-actions a.btn:hover { background: #f5f5f5; }
+    .ohm-actions .btn-primary:hover { background: #166e3d; color: #fff; }
+    .ohm-actions small { font-size: .65rem; color: #888; font-weight: normal; display: block; margin-top: .1rem; }
+    .toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: .5rem 1rem; border-radius: 4px; font-size: .8rem; opacity: 0; transition: opacity .2s; pointer-events: none; }
+    .toast.show { opacity: .92; }
+
+    .signal-badge { display: inline-block; padding: .15rem .5rem; border-radius: 10px; font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+    .signal-badge.strong  { background: #d0e8d0; color: #1a6028; }
+    .signal-badge.neutral { background: #ddd; color: #555; }
+
+    .loading { padding: 2rem; text-align: center; color: #666; }
+    .err     { padding: 1rem; color: #c00; background: #ffe8e8; font-size: .8rem; }
+
+    @media (max-width: 1100px) {
+      #app { grid-template-columns: 300px 1fr 320px; }
+    }
+    @media (max-width: 850px) {
+      #app { grid-template-columns: 280px 1fr; }
+      #details { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <div id="header">
+        <h1>OSM deleted data as candidates for OHM</h1>
+        <div class="stats" id="stats">Loading…</div>
+      </div>
+      <div id="filters">
+        <div class="row">
+          <label><input type="checkbox" id="f-strong" checked> strong</label>
+          <label><input type="checkbox" id="f-neutral" checked> neutral</label>
+          <span style="color:#ddd;">|</span>
+          <label><input type="checkbox" id="f-node" checked> nodes</label>
+          <label><input type="checkbox" id="f-way" checked> ways</label>
+        </div>
+        <div class="search-wrap">
+          <input type="text" id="f-search" placeholder="search in tags or changeset comment (e.g. demolish)" />
+        </div>
+        <div class="hint">tip: try <code>demolish</code>, <code>ruins</code>, <code>building=yes</code>, <code>highway</code></div>
+      </div>
+      <div id="list" class="loading">Loading DuckDB-WASM…</div>
+    </aside>
+    <div id="map"></div>
+    <aside id="details">
+      <div class="empty" id="details-empty">Click a candidate to see its details.</div>
+      <div id="details-content" hidden></div>
+    </aside>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script type="module">
+    import * as duckdb from 'https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.28.0/+esm';
+
+    // Dev: serve from /data/ next to this page (same origin, no CORS issues).
+    // Prod: replace with a CORS-enabled CDN/bucket URL.
+    //   const DATA_BASE = "https://planet.openhistoricalmap.org/historical-osm-data/sample_001_enriched";  // CORS-blocked
+    // DuckDB-WASM needs an absolute URL — relative paths get treated as a
+    // filesystem path that doesn't exist in the browser sandbox.
+    const DATA_BASE = `${window.location.origin}/data/sample_001_enriched`;
+    const NODES_URL = `${DATA_BASE}/type=node/part-00001-86d77634-f9f4-4fac-8351-6d3ad2e4c1cd.c000.snappy.parquet`;
+    const WAYS_URL  = `${DATA_BASE}/type=way/part-00000-86d77634-f9f4-4fac-8351-6d3ad2e4c1cd.c000.snappy.parquet`;
+
+    const OVERPASS = "https://overpass-api.de/api/interpreter";
+    const OSM_OBJ_URL = (type, id) => `https://www.openstreetmap.org/${type}/${id}`;
+
+    const map = L.map('map').setView([0, 0], 2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap', maxZoom: 19,
+    }).addTo(map);
+    const featureLayer = L.layerGroup().addTo(map);
+
+    const state = { rows: [], filtered: [], active: null, geomCache: new Map() };
+
+    const el = (id) => document.getElementById(id);
+    const list = el('list');
+    const stats = el('stats');
+
+    list.textContent = 'Loading DuckDB-WASM…';
+
+    // ── DuckDB init ──────────────────────────────────────────
+    // Workers can't load directly from a CDN due to cross-origin rules,
+    // so we wrap the worker URL in a same-origin blob that uses
+    // importScripts() to pull the actual worker code (allowed inside workers).
+    const bundles = duckdb.getJsDelivrBundles();
+    const bundle = await duckdb.selectBundle(bundles);
+    const workerUrl = URL.createObjectURL(
+      new Blob([`importScripts("${bundle.mainWorker}");`], { type: 'text/javascript' })
+    );
+    const worker = new Worker(workerUrl);
+    const db = new duckdb.AsyncDuckDB(new duckdb.ConsoleLogger(), worker);
+    await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+    URL.revokeObjectURL(workerUrl);
+    const conn = await db.connect();
+
+    list.textContent = 'Reading parquet from S3…';
+
+    // ── Load both parquet files ──────────────────────────────
+    // hive_partitioning=false → don't auto-derive `type` from the URL path,
+    // we add it explicitly with a literal so the UNION columns line up cleanly.
+    let result;
+    try {
+      result = await conn.query(`
+        SELECT * FROM (
+          SELECT
+            id, num_versions, distinct_users,
+            lifetime_days, age_at_deletion_days,
+            deleted_at, last_changeset, last_lat, last_lon,
+            good_tags, cs_comment, cs_created_by, cs_user, comment_signal,
+            'node' AS type
+          FROM read_parquet('${NODES_URL}', hive_partitioning=false)
+          UNION ALL
+          SELECT
+            id, num_versions, distinct_users,
+            lifetime_days, age_at_deletion_days,
+            deleted_at, last_changeset, last_lat, last_lon,
+            good_tags, cs_comment, cs_created_by, cs_user, comment_signal,
+            'way' AS type
+          FROM read_parquet('${WAYS_URL}', hive_partitioning=false)
+        )
+        ORDER BY (comment_signal = 'strong') DESC, deleted_at DESC
+      `);
+    } catch (e) {
+      list.innerHTML = `<div class="err">Error loading data:<br><code>${e.message}</code><br><br>
+        Check:<br>
+        1. That the .parquet files exist under <code>web/data/sample_001_enriched/</code><br>
+        2. That the http server is running from <code>web/</code><br>
+        3. That <code>DATA_BASE</code> in the script points to the right path
+      </div>`;
+      throw e;
+    }
+
+    state.rows = result.toArray().map(row => row.toJSON());
+    stats.textContent = `${state.rows.length} candidates loaded`;
+    bindFilters();
+    render();
+
+    // ── Filtering / rendering ────────────────────────────────
+    function bindFilters() {
+      ['f-strong', 'f-neutral', 'f-node', 'f-way'].forEach(id =>
+        el(id).addEventListener('change', render));
+      el('f-search').addEventListener('input', render);
+    }
+
+    function render() {
+      const showStrong  = el('f-strong').checked;
+      const showNeutral = el('f-neutral').checked;
+      const showNodes   = el('f-node').checked;
+      const showWays    = el('f-way').checked;
+      const search      = el('f-search').value.toLowerCase().trim();
+
+      state.filtered = state.rows.filter(r => {
+        if (r.comment_signal === 'strong'  && !showStrong)  return false;
+        if (r.comment_signal === 'neutral' && !showNeutral) return false;
+        if (r.type === 'node' && !showNodes) return false;
+        if (r.type === 'way'  && !showWays)  return false;
+        if (search) {
+          const tagsBlob = Object.entries(tagsToObj(r.good_tags))
+            .map(([k, v]) => `${k}=${v}`).join(' ').toLowerCase();
+          const comment = toJsStr(r.cs_comment).toLowerCase();
+          if (!tagsBlob.includes(search) && !comment.includes(search)) return false;
+        }
+        return true;
+      });
+
+      stats.textContent = `${state.filtered.length} / ${state.rows.length} candidates`;
+      list.innerHTML = '';
+      const frag = document.createDocumentFragment();
+      state.filtered.slice(0, 500).forEach(r => frag.appendChild(itemEl(r)));
+      list.appendChild(frag);
+      if (state.filtered.length > 500) {
+        const more = document.createElement('div');
+        more.className = 'loading';
+        more.textContent = `+${state.filtered.length - 500} more (refine filters)`;
+        list.appendChild(more);
+      }
+    }
+
+    function tagsToObj(tags) {
+      if (!tags) return {};
+      if (tags instanceof Map) return Object.fromEntries(tags);
+      if (Array.isArray(tags)) {
+        const out = {};
+        for (const t of tags) {
+          if (Array.isArray(t)) out[t[0]] = t[1];
+          else if (t && t.key !== undefined) out[t.key] = t.value;
+        }
+        return out;
+      }
+      if (typeof tags === 'object') return tags;
+      return {};
+    }
+
+    // DuckDB-WASM returns BIGINT as BigInt and TIMESTAMP either as Date or
+    // BigInt micro/milliseconds. Coerce safely.
+    function toJsNum(v) {
+      if (v == null) return null;
+      if (typeof v === 'bigint') return Number(v);
+      return v;
+    }
+    function toJsStr(v) {
+      if (v == null) return '';
+      if (typeof v === 'bigint') return v.toString();
+      if (v instanceof Date) return v.toISOString();
+      return String(v);
+    }
+    function toJsDate(v) {
+      if (v == null) return null;
+      if (v instanceof Date) return v;
+      if (typeof v === 'bigint') {
+        // DuckDB usually exposes timestamps in milliseconds; if the value is
+        // suspiciously large assume microseconds.
+        const n = Number(v);
+        return new Date(n > 1e15 ? n / 1000 : n);
+      }
+      if (typeof v === 'number') return new Date(v);
+      const d = new Date(v);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    function itemEl(r) {
+      const tags = tagsToObj(r.good_tags);
+      const name = tags.name || tags['name:es'] || tags['name:en'] || `${r.type} ${toJsStr(r.id)}`;
+      const div = document.createElement('div');
+      div.className = `candidate ${r.comment_signal || ''}`;
+      div.innerHTML = `
+        <div class="title">${escape(name)}</div>
+        <div class="meta">
+          <span class="badge ${r.type}">${r.type}</span>
+          ${r.comment_signal === 'strong' ? '<span class="badge strong">★ strong</span>' : ''}
+          <span>v${toJsStr(r.num_versions)}</span>
+          <span>${toJsStr(r.distinct_users)}u</span>
+          <span>${shortDate(r.deleted_at)}</span>
+        </div>
+        ${r.cs_comment ? `<div class="comment">"${escape(r.cs_comment)}"</div>` : ''}
+      `;
+      div.addEventListener('click', () => activate(r, div));
+      return div;
+    }
+
+    function activate(r, divEl) {
+      document.querySelectorAll('.candidate.active').forEach(e => e.classList.remove('active'));
+      divEl.classList.add('active');
+      state.active = r;
+      renderDetails(r);
+      showOnMap(r).catch(e => {
+        console.error('showOnMap failed:', e, 'row:', r);
+        const err = document.createElement('div');
+        err.className = 'err';
+        err.style.margin = '.5rem 1rem';
+        err.textContent = `Map error: ${e.message}`;
+        const content = el('details-content');
+        if (content) content.prepend(err);
+      });
+    }
+
+    // ── Details panel ────────────────────────────────────────
+    function renderDetails(r) {
+      const tags = tagsToObj(r.good_tags);
+      const idStr = toJsStr(r.id);
+      const name = tags.name || tags['name:es'] || tags['name:en'] || `${r.type} ${idStr}`;
+      const signal = r.comment_signal || 'neutral';
+
+      // Header
+      const headerHTML = `
+        <div class="header">
+          <h2>${escape(name)}</h2>
+          <div class="sub">
+            <span class="signal-badge ${signal}">${signal}</span>
+            <span class="badge ${r.type}">${r.type}</span>
+            <a href="${OSM_OBJ_URL(r.type, idStr)}" target="_blank">${r.type}/${idStr}</a>
+          </div>
+        </div>`;
+
+      // Tags
+      const tagEntries = Object.entries(tags);
+      const tagsHTML = tagEntries.length === 0
+        ? '<p style="color:#888; font-size:.85rem; margin:0;">(no tags)</p>'
+        : `<table class="kv">${
+            tagEntries.map(([k, v]) =>
+              `<tr><td>${escape(k)}</td><td>${escape(v)}</td></tr>`
+            ).join('')
+          }</table>`;
+
+      // Stats
+      const statsHTML = `<table class="kv">
+        <tr><td>versions</td><td>${toJsStr(r.num_versions)}</td></tr>
+        <tr><td>distinct users</td><td>${toJsStr(r.distinct_users)}</td></tr>
+        <tr><td>deleted at</td><td>${shortDate(r.deleted_at)}</td></tr>
+        <tr><td>lifetime</td><td>${toJsStr(r.lifetime_days)} days</td></tr>
+        <tr><td>age at deletion</td><td>${toJsStr(r.age_at_deletion_days)} days</td></tr>
+      </table>`;
+
+      // Changeset (deletion)
+      const csId = toJsStr(r.last_changeset);
+      const csHTML = `<table class="kv">
+        <tr><td>changeset</td><td><a href="https://www.openstreetmap.org/changeset/${csId}" target="_blank">${csId}</a></td></tr>
+        ${r.cs_user    ? `<tr><td>user</td><td><a href="https://www.openstreetmap.org/user/${encodeURIComponent(toJsStr(r.cs_user))}" target="_blank">${escape(r.cs_user)}</a></td></tr>` : ''}
+        ${r.cs_created_by ? `<tr><td>editor</td><td>${escape(r.cs_created_by)}</td></tr>` : ''}
+        ${r.cs_source  ? `<tr><td>source</td><td>${escape(r.cs_source)}</td></tr>` : ''}
+        ${r.cs_comment ? `<tr><td>comment</td><td><i>${escape(r.cs_comment)}</i></td></tr>` : '<tr><td>comment</td><td style="color:#aaa;">(empty)</td></tr>'}
+      </table>`;
+
+      // Links / actions
+      const osmchaUrl  = `https://osmcha.org/changesets/${csId}`;
+      const overpassUrl = `https://overpass-turbo.eu/?Q=${encodeURIComponent(`[date:"${toJsDate(r.deleted_at)?.toISOString().replace(/\.\d{3}Z$/, 'Z') || ''}"];${r.type}(${idStr});out geom;`)}&R`;
+      const historyUrl = `https://www.openstreetmap.org/${r.type}/${idStr}/history`;
+
+      const linksHTML = `<div class="links">
+        <a href="${historyUrl}" target="_blank">View full history on OSM</a>
+        <a href="${osmchaUrl}" target="_blank">View changeset on OSMCha</a>
+        <a href="${overpassUrl}" target="_blank">Inspect on Overpass turbo</a>
+      </div>`;
+
+      // Send to OHM — buttons (handlers wired later via data-action)
+      const ohmHTML = `<div class="ohm-actions">
+        <button data-action="ohm-id" class="btn-primary">
+          ✏️ Open OHM iD at this location
+          <small>centers map at the object so you can recreate it manually</small>
+        </button>
+        <button data-action="copy-tags">
+          📋 Copy tags (${tagEntries.length})
+          <small>paste into OHM iD's "All tags" panel</small>
+        </button>
+        <button data-action="josm-load">
+          🛠️ JOSM: load deleted version via Overpass
+          <small>fetches the last visible state with timestamp; requires JOSM with remote control on :8111</small>
+        </button>
+        <a href="https://api.openstreetmap.org/api/0.6/${r.type}/${idStr}/${toJsStr(r.last_good_version)}" target="_blank" class="btn">
+          📄 View deleted version (OSM XML)
+          <small>raw data of the last visible version</small>
+        </a>
+      </div>`;
+
+      // Compose
+      const html = `
+        ${headerHTML}
+        <section><h3>Tags (${tagEntries.length})</h3>${tagsHTML}</section>
+        <section><h3>Stats</h3>${statsHTML}</section>
+        <section><h3>Deletion changeset</h3>${csHTML}</section>
+        <section><h3>Send to OHM</h3>${ohmHTML}</section>
+        <section><h3>External links</h3>${linksHTML}</section>
+      `;
+
+      el('details-empty').hidden = true;
+      const content = el('details-content');
+      content.hidden = false;
+      content.innerHTML = html;
+
+      // Wire OHM action buttons
+      content.querySelector('[data-action="ohm-id"]').addEventListener('click', () => openOhmId(r, tags));
+      content.querySelector('[data-action="copy-tags"]').addEventListener('click', () => copyTags(tags));
+      content.querySelector('[data-action="josm-load"]').addEventListener('click', () => josmLoad(r));
+    }
+
+    // ── OHM action handlers ───────────────────────────────────
+    async function openOhmId(r, tags) {
+      // Need a coordinate. Prefer the active layer's bounds, else parquet.
+      let lat, lon, zoom = 18;
+      if (state.active && state.active === r) {
+        const layers = featureLayer.getLayers();
+        if (layers.length > 0) {
+          if (layers[0].getLatLng) {
+            const ll = layers[0].getLatLng();
+            lat = ll.lat; lon = ll.lng;
+          } else if (layers[0].getBounds) {
+            const c = layers[0].getBounds().getCenter();
+            lat = c.lat; lon = c.lng;
+          }
+        }
+      }
+      if (lat == null && r.last_lat != null && r.last_lon != null) {
+        lat = Number(r.last_lat); lon = Number(r.last_lon);
+      }
+      if (!isFinite(lat) || !isFinite(lon)) {
+        toast('Click the candidate first to load coords from Overpass.');
+        return;
+      }
+      const idStr = toJsStr(r.id);
+      const comment = encodeURIComponent(
+        `Recreating from OSM ${r.type}/${idStr} (deleted ${shortDate(r.deleted_at)})`
+      );
+      const url = `https://www.openhistoricalmap.org/edit#map=${zoom}/${lat.toFixed(6)}/${lon.toFixed(6)}&comment=${comment}`;
+      window.open(url, '_blank');
+    }
+
+    async function copyTags(tags) {
+      const text = Object.entries(tags).map(([k, v]) => `${k}=${v}`).join('\n');
+      try {
+        await navigator.clipboard.writeText(text);
+        toast(`Copied ${Object.keys(tags).length} tags to clipboard`);
+      } catch (e) {
+        toast('Clipboard blocked — see console');
+        console.log('Tags:\n' + text);
+      }
+    }
+
+    async function josmLoad(r) {
+      const idStr = toJsStr(r.id);
+      const deletedDate = toJsDate(r.deleted_at);
+      if (!deletedDate) {
+        toast('Invalid deleted_at — cannot build Overpass query');
+        return;
+      }
+      // Query Overpass at the timestamp BEFORE deletion so JOSM gets the
+      // last visible version (and recurses to include referenced nodes).
+      const dt = new Date(deletedDate.getTime() - 1000);
+      const dateStr = dt.toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const overpassQuery = `[out:xml][date:"${dateStr}"];${r.type}(${idStr});(._;>;);out meta;`;
+      const overpassUrl = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(overpassQuery)}`;
+      const josmUrl = `http://127.0.0.1:8111/import?new_layer=true&layer_name=${encodeURIComponent(`OSM ${r.type}/${idStr} (deleted)`)}&url=${encodeURIComponent(overpassUrl)}`;
+      try {
+        const resp = await fetch(josmUrl);
+        if (resp.ok) toast(`Sent to JOSM: ${r.type}/${idStr} (via Overpass)`);
+        else toast(`JOSM responded ${resp.status} — is it running?`);
+      } catch (e) {
+        toast('JOSM not reachable on :8111 — open JOSM and enable remote control');
+      }
+    }
+
+    function toast(msg) {
+      let t = document.querySelector('.toast');
+      if (!t) {
+        t = document.createElement('div');
+        t.className = 'toast';
+        document.body.appendChild(t);
+      }
+      t.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(t._timer);
+      t._timer = setTimeout(() => t.classList.remove('show'), 2200);
+    }
+
+    // ── Map ──────────────────────────────────────────────────
+    async function showOnMap(r) {
+      featureLayer.clearLayers();
+      const tags = tagsToObj(r.good_tags);
+      console.log('[showOnMap] click:', r.type, toJsStr(r.id),
+                  'lat:', r.last_lat, 'lon:', r.last_lon,
+                  'tags keys:', Object.keys(tags).length);
+
+      // Always ask Overpass first — it knows the canonical geometry as it
+      // existed right before deletion. Fall back to the parquet coords for
+      // nodes if Overpass can't serve us (rate-limit, missing version).
+      let geom;
+      try {
+        geom = await fetchOverpassGeometry(r);
+      } catch (e) {
+        console.warn('[showOnMap] overpass failed, trying parquet fallback:', e.message);
+        if (r.type === 'node') {
+          const lat = Number(r.last_lat);
+          const lon = Number(r.last_lon);
+          if (isFinite(lat) && isFinite(lon)) {
+            geom = { kind: 'point', coords: [lat, lon], source: 'parquet' };
+          } else {
+            throw e;
+          }
+        } else {
+          throw e;
+        }
+      }
+      console.log('[showOnMap] geometry:', geom);
+      if (!geom || !geom.coords || (Array.isArray(geom.coords) && geom.coords.length === 0)) {
+        throw new Error('No geometry available');
+      }
+
+      const stroke = r.comment_signal === 'strong' ? '#15803d' : '#1d4ed8';
+      const fill   = r.comment_signal === 'strong' ? '#22c55e' : '#3b82f6';
+      let layer;
+      if (geom.kind === 'point') {
+        layer = L.marker(geom.coords);
+        map.setView(geom.coords, 18);
+      } else if (geom.kind === 'polyline') {
+        layer = L.polyline(geom.coords, { color: stroke, weight: 5, opacity: 0.95 });
+        map.fitBounds(layer.getBounds(), { maxZoom: 18, padding: [40, 40] });
+      } else if (geom.kind === 'polygon') {
+        layer = L.polygon(geom.coords, {
+          color: stroke,
+          weight: 3,
+          opacity: 1,
+          fillColor: fill,
+          fillOpacity: 0.6,
+        });
+        map.fitBounds(layer.getBounds(), { maxZoom: 18, padding: [40, 40] });
+      } else {
+        throw new Error(`Unknown geometry kind: ${geom.kind}`);
+      }
+
+      featureLayer.addLayer(layer);
+      console.log('[showOnMap] layer added, bounds:', layer.getBounds && layer.getBounds());
+    }
+
+    async function fetchOverpassGeometry(r) {
+      const idStr = toJsStr(r.id);
+      const cacheKey = `${r.type}/${idStr}/${toJsStr(r.deleted_at)}`;
+      if (state.geomCache.has(cacheKey)) return state.geomCache.get(cacheKey);
+
+      // Query 1 second BEFORE the deletion: that's the last visible state.
+      const deletedDate = toJsDate(r.deleted_at);
+      if (!deletedDate) throw new Error(`Invalid deleted_at: ${r.deleted_at}`);
+      const dt = new Date(deletedDate.getTime() - 1000);
+      const dateStr = dt.toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const query = `[out:json][date:"${dateStr}"];${r.type}(${idStr});out geom;`;
+
+      const resp = await fetch(OVERPASS, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'data=' + encodeURIComponent(query),
+      });
+      if (!resp.ok) throw new Error(`Overpass HTTP ${resp.status}`);
+      const data = await resp.json();
+      console.log('[overpass] query:', query);
+      console.log('[overpass] response:', data);
+      if (!data.elements || data.elements.length === 0) {
+        throw new Error('Overpass returned no geometry (the object may have been fully deleted at that date)');
+      }
+
+      const el = data.elements[0];
+      let result;
+      if (el.type === 'node') {
+        result = { kind: 'point', coords: [el.lat, el.lon] };
+      } else if (el.type === 'way' && el.geometry && el.geometry.length > 0) {
+        const coords = el.geometry.map(g => [g.lat, g.lon]);
+        if (coords.length === 1) {
+          // degenerate way — show as point
+          result = { kind: 'point', coords: coords[0] };
+        } else {
+          const isClosed = coords.length > 2 &&
+                           coords[0][0] === coords[coords.length - 1][0] &&
+                           coords[0][1] === coords[coords.length - 1][1];
+          const tags = el.tags || {};
+          const isPolygon = isClosed && (
+            tags.building || tags.landuse || tags.leisure ||
+            tags.natural || tags.amenity || tags.area === 'yes'
+          );
+          result = { kind: isPolygon ? 'polygon' : 'polyline', coords };
+        }
+      } else {
+        throw new Error(`Empty geometry or unsupported type: ${el.type}`);
+      }
+      state.geomCache.set(cacheKey, result);
+      return result;
+    }
+
+    function shortDate(d) {
+      const dt = toJsDate(d);
+      return dt ? dt.toISOString().slice(0, 10) : '';
+    }
+    function escape(s) { return toJsStr(s).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+  </script>
+</body>
+</html>
