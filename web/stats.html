@@ -1,0 +1,1271 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Atlas of the Erased — OSM → OHM candidates</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..900,30..100&family=Geist:wght@300..700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+
+  <style>
+    :root {
+      --paper:        #f5f1e8;
+      --paper-2:      #efeadd;
+      --surface:      #fbf9f3;
+      --ink:          #1a1f1a;
+      --ink-2:        #3a4038;
+      --muted:        #777a72;
+      --line:         #d9d2c0;
+      --line-strong:  #b8b09a;
+
+      --ohm:          #2c6e49;
+      --ohm-2:        #4c956c;
+      --ohm-deep:     #1f4d33;
+      --osm:          #b8623c;
+      --osm-2:        #d68a5a;
+      --node:         #2f5d8f;
+      --way:          #b8623c;
+      --gold:         #c8973a;
+      --strong:       #2c6e49;
+      --neutral:      #8a8d82;
+
+      --shadow-1: 0 1px 0 rgba(40,33,15,.04), 0 1px 2px rgba(40,33,15,.04);
+      --shadow-2: 0 1px 0 rgba(40,33,15,.04), 0 8px 24px -12px rgba(40,33,15,.18);
+    }
+
+    *,*::before,*::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: 'Geist', -apple-system, system-ui, sans-serif;
+      font-size: 14px;
+      color: var(--ink);
+      background: var(--paper);
+      background-image:
+        radial-gradient(at 12% 8%, rgba(44,110,73,.06) 0, transparent 45%),
+        radial-gradient(at 88% 92%, rgba(184,98,60,.05) 0, transparent 45%),
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.1  0 0 0 0 0.1  0 0 0 0 0.05  0 0 0 0.03 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    /* ── Top navigation bar ─────────────────────────────── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 2rem;
+      border-bottom: 1px solid var(--line);
+      background: var(--paper);
+      position: sticky; top: 0; z-index: 10;
+      backdrop-filter: blur(8px);
+      background: rgba(245,241,232,.85);
+    }
+    .topbar .brand {
+      display: flex; align-items: center; gap: .65rem;
+      font-family: 'Fraunces', serif;
+      font-weight: 500;
+      font-variation-settings: 'opsz' 14, 'SOFT' 50;
+      font-size: .95rem;
+      letter-spacing: -.01em;
+    }
+    .topbar .brand .dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--ohm);
+      box-shadow: 0 0 0 3px rgba(44,110,73,.18);
+    }
+    .topbar nav { display: flex; gap: 1.25rem; align-items: center; }
+    .topbar nav a {
+      color: var(--ink-2);
+      text-decoration: none;
+      font-size: .8rem;
+      font-weight: 500;
+      padding: .35rem .65rem;
+      border-radius: 999px;
+      transition: background .15s, color .15s;
+    }
+    .topbar nav a:hover { background: var(--paper-2); color: var(--ohm-deep); }
+    .topbar nav a.cta {
+      background: var(--ink);
+      color: var(--paper);
+    }
+    .topbar nav a.cta:hover { background: var(--ohm-deep); color: var(--paper); }
+
+    /* ── Hero ──────────────────────────────────────────────── */
+    .hero {
+      max-width: 1380px;
+      margin: 0 auto;
+      padding: 3.25rem 2rem 1.5rem;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 2rem;
+      align-items: end;
+      border-bottom: 1px solid var(--line);
+    }
+    .hero .eyebrow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .7rem;
+      letter-spacing: .25em;
+      text-transform: uppercase;
+      color: var(--ohm);
+      margin-bottom: .9rem;
+    }
+    .hero h1 {
+      font-family: 'Fraunces', serif;
+      font-weight: 380;
+      font-variation-settings: 'opsz' 144, 'SOFT' 80;
+      font-size: clamp(2.2rem, 5vw, 4rem);
+      line-height: .98;
+      letter-spacing: -.025em;
+      margin: 0 0 .85rem 0;
+      color: var(--ink);
+    }
+    .hero h1 em {
+      font-style: italic;
+      font-weight: 300;
+      color: var(--ohm-deep);
+    }
+    .hero .deck {
+      max-width: 56ch;
+      font-size: .98rem;
+      line-height: 1.55;
+      color: var(--ink-2);
+    }
+    .hero .deck strong { color: var(--ohm-deep); font-weight: 600; }
+    .hero .deck code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .82em;
+      background: var(--paper-2);
+      padding: 1px 6px;
+      border-radius: 3px;
+      border: 1px solid var(--line);
+      transition: background .15s, border-color .15s, color .15s;
+    }
+    .hero .deck a {
+      text-decoration: none;
+      color: inherit;
+    }
+    .hero .deck a:hover code {
+      background: var(--ohm);
+      color: var(--paper);
+      border-color: var(--ohm-deep);
+    }
+    .hero .deck a::after {
+      content: ' ↗';
+      color: var(--ohm);
+      font-size: .75em;
+      letter-spacing: -.05em;
+    }
+    .hero .meta {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .7rem;
+      color: var(--muted);
+      text-align: right;
+      line-height: 1.7;
+    }
+    .hero .meta .row { display: flex; gap: .5rem; justify-content: flex-end; }
+    .hero .meta b { color: var(--ink); font-weight: 500; }
+
+    /* ── Main ─────────────────────────────────────────────── */
+    main { max-width: 1380px; margin: 0 auto; padding: 2rem 2rem 5rem; }
+
+    /* KPI strip */
+    .kpi-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 0;
+      margin-bottom: 2.5rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--surface);
+      box-shadow: var(--shadow-1);
+    }
+    .kpi {
+      padding: 1.25rem 1.4rem;
+      border-right: 1px solid var(--line);
+      position: relative;
+      min-width: 0;
+    }
+    .kpi:last-child { border-right: none; }
+    .kpi .lbl {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .65rem;
+      color: var(--muted);
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      margin-bottom: .55rem;
+    }
+    .kpi .val {
+      font-family: 'Fraunces', serif;
+      font-weight: 400;
+      font-variation-settings: 'opsz' 72, 'SOFT' 30;
+      font-size: 2.1rem;
+      line-height: 1;
+      letter-spacing: -.02em;
+      font-variant-numeric: tabular-nums lining-nums;
+      color: var(--ink);
+      margin-bottom: .25rem;
+    }
+    .kpi .sub {
+      font-size: .72rem;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .kpi .sub b { color: var(--ink-2); font-weight: 500; }
+    .kpi.accent .val   { color: var(--ohm-deep); }
+    .kpi.strong .val   { color: var(--ohm); }
+    .kpi.neutral .val  { color: var(--ink-2); }
+    .kpi.node .val     { color: var(--node); }
+    .kpi.way  .val     { color: var(--way); }
+    .kpi.gold .val     { color: var(--gold); }
+
+    .kpi::after {
+      content: '';
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 2px;
+      background: transparent;
+    }
+    .kpi.strong::after { background: var(--ohm); }
+    .kpi.neutral::after { background: var(--neutral); }
+    .kpi.node::after   { background: var(--node); }
+    .kpi.way::after    { background: var(--way); }
+    .kpi.gold::after   { background: var(--gold); }
+
+    /* Filter bar */
+    .filterbar {
+      display: flex;
+      gap: .8rem;
+      align-items: center;
+      flex-wrap: wrap;
+      padding: .85rem 1.1rem;
+      margin-bottom: 1.5rem;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow-1);
+    }
+    .filterbar .lbl {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .65rem;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .filterbar .select-wrap {
+      position: relative;
+      display: inline-block;
+    }
+    .filterbar select {
+      appearance: none;
+      -webkit-appearance: none;
+      font-family: 'Geist', sans-serif;
+      font-size: .85rem;
+      color: var(--ink);
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: .45rem 2.2rem .45rem .75rem;
+      cursor: pointer;
+      min-width: 220px;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .filterbar select:hover { border-color: var(--line-strong); }
+    .filterbar select:focus {
+      outline: none; border-color: var(--ohm);
+      box-shadow: 0 0 0 3px rgba(44,110,73,.15);
+    }
+    .filterbar .select-wrap::after {
+      content: '▾';
+      position: absolute; right: .75rem; top: 50%;
+      transform: translateY(-50%);
+      pointer-events: none;
+      color: var(--muted);
+      font-size: .75rem;
+    }
+    .filterbar .clear {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .7rem;
+      color: var(--osm);
+      background: none;
+      border: 1px dashed var(--line);
+      border-radius: 999px;
+      padding: .3rem .65rem;
+      cursor: pointer;
+      transition: border-color .15s, color .15s;
+    }
+    .filterbar .clear:hover { border-color: var(--osm); color: var(--osm-2); }
+    .filterbar .scope {
+      margin-left: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .72rem;
+      color: var(--muted);
+    }
+    .filterbar .scope b {
+      color: var(--ohm-deep);
+      font-weight: 600;
+    }
+
+    /* Grid of cards */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 1.25rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 1.25rem 1.35rem 1.1rem;
+      box-shadow: var(--shadow-1);
+      min-width: 0;
+      transition: box-shadow .2s, border-color .2s;
+    }
+    .card:hover { box-shadow: var(--shadow-2); border-color: var(--line-strong); }
+    .card.col-12 { grid-column: span 12; }
+    .card.col-8  { grid-column: span 8; }
+    .card.col-7  { grid-column: span 7; }
+    .card.col-6  { grid-column: span 6; }
+    .card.col-5  { grid-column: span 5; }
+    .card.col-4  { grid-column: span 4; }
+
+    .card-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      padding-bottom: .75rem;
+      border-bottom: 1px dashed var(--line);
+    }
+    .card-head h2 {
+      margin: 0;
+      font-family: 'Fraunces', serif;
+      font-weight: 450;
+      font-variation-settings: 'opsz' 24, 'SOFT' 50;
+      font-size: 1.05rem;
+      letter-spacing: -.01em;
+      color: var(--ink);
+    }
+    .card-head h2 em { font-style: italic; color: var(--ohm-deep); font-weight: 400; }
+    .card-head .tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .65rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: .15rem .45rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--paper);
+      white-space: nowrap;
+    }
+    .card-sub {
+      font-size: .78rem;
+      color: var(--muted);
+      margin: -.5rem 0 .9rem;
+      line-height: 1.45;
+    }
+
+    .chart { width: 100%; height: 340px; }
+    .chart.tall { height: 460px; }
+    .chart.short { height: 240px; }
+
+    /* mini list / rank with bars */
+    .rank-mini {
+      display: grid;
+      gap: .35rem;
+      font-size: .82rem;
+      max-height: 460px;
+      overflow-y: auto;
+      padding-right: .25rem;
+    }
+    .rank-mini::-webkit-scrollbar { width: 8px; }
+    .rank-mini::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+    .rank-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: .65rem;
+      padding: .35rem .15rem;
+      border-bottom: 1px solid rgba(217,210,192,.5);
+      position: relative;
+    }
+    .rank-row:last-child { border-bottom: none; }
+    .rank-row .key {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .78rem;
+      color: var(--ink);
+      word-break: break-all;
+      position: relative;
+      z-index: 1;
+    }
+    .rank-row .cnt {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .78rem;
+      color: var(--ink-2);
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+    }
+    .rank-row .bar {
+      position: absolute;
+      left: 0; top: 50%;
+      transform: translateY(-50%);
+      height: calc(100% - 6px);
+      background: linear-gradient(90deg, rgba(44,110,73,.13), rgba(44,110,73,.03));
+      border-left: 2px solid var(--ohm);
+      border-radius: 2px;
+      z-index: 0;
+    }
+    .rank-row.osm .bar { background: linear-gradient(90deg, rgba(184,98,60,.13), rgba(184,98,60,.03)); border-left-color: var(--osm); }
+
+    /* small matrix table */
+    .matrix-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .82rem;
+      table-layout: auto;
+    }
+    .matrix-table th, .matrix-table td {
+      text-align: left;
+      padding: .5rem .3rem;
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+    .matrix-table th {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .62rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .matrix-table td.n {
+      text-align: right;
+      font-family: 'JetBrains Mono', monospace;
+      font-variant-numeric: tabular-nums;
+      color: var(--ink);
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: .35rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .7rem;
+      letter-spacing: .04em;
+      white-space: nowrap;
+    }
+    .chip .swatch { width: 8px; height: 8px; border-radius: 2px; }
+    .chip.node .swatch { background: var(--node); }
+    .chip.way  .swatch { background: var(--way); }
+    .chip.strong  .swatch { background: var(--ohm); border-radius: 50%; }
+    .chip.neutral .swatch { background: var(--neutral); border-radius: 50%; }
+
+    /* footer */
+    footer {
+      max-width: 1380px;
+      margin: 0 auto;
+      padding: 2rem;
+      font-size: .75rem;
+      color: var(--muted);
+      border-top: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: .5rem;
+    }
+    footer code { font-family: 'JetBrains Mono', monospace; background: var(--paper-2); padding: 1px 5px; border-radius: 3px; }
+
+    /* loading / error */
+    .loading {
+      max-width: 1380px;
+      margin: 5rem auto;
+      padding: 3rem;
+      text-align: center;
+      color: var(--muted);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .8rem;
+    }
+    .loading .spinner {
+      display: inline-block;
+      width: 28px; height: 28px;
+      border: 2px solid var(--line);
+      border-top-color: var(--ohm);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 1rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .err {
+      max-width: 800px;
+      margin: 2rem auto;
+      padding: 1rem 1.25rem;
+      background: #fde7e1;
+      border: 1px solid #d49986;
+      color: #7a2410;
+      border-radius: 6px;
+      font-size: .85rem;
+    }
+
+    /* fade-in for cards on mount */
+    .card, .kpi {
+      opacity: 0;
+      animation: rise .55s cubic-bezier(.2,.7,.2,1) forwards;
+    }
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: none; }
+    }
+
+    /* Responsive */
+    @media (max-width: 1100px) {
+      .card.col-8, .card.col-7, .card.col-6, .card.col-5, .card.col-4 { grid-column: span 12; }
+      .hero { grid-template-columns: 1fr; }
+      .hero .meta { text-align: left; }
+      .hero .meta .row { justify-content: flex-start; }
+    }
+    @media (max-width: 640px) {
+      .hero, main, footer, .topbar { padding-left: 1.1rem; padding-right: 1.1rem; }
+      .kpi { border-right: none; border-bottom: 1px solid var(--line); }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      Atlas of the Erased
+    </div>
+    <nav>
+      <a href="./index.html">← ver mapa</a>
+      <a href="./index.html" class="cta">Abrir candidatos →</a>
+    </nav>
+  </div>
+
+  <section class="hero">
+    <div>
+      <div class="eyebrow">Muestra (0.0001%) · candidatos OSM → OHM</div>
+      <h1>What the map <em>forgot.</em></h1>
+      <p class="deck">
+        Estudio de campo sobre objetos de OpenStreetMap — nodos y vías — que fueron
+        <strong>eliminados</strong> pero que aún podrían pertenecer al registro histórico de
+        <strong>OpenHistoricalMap</strong>. Pre-filtrado con
+        <a href="https://github.com/Rub21/osm2ohm/blob/main/extract_ohm_candidates.py" target="_blank" rel="noopener"><code>extract_ohm_candidates.py</code></a>
+        y enriquecido con
+        <a href="https://github.com/Rub21/osm2ohm/blob/main/enrich_with_changesets.py" target="_blank" rel="noopener"><code>enrich_with_changesets.py</code></a>.
+      </p>
+    </div>
+    <div class="meta" id="hero-meta">
+      <div class="row"><span>muestra</span><b>001 / enriquecida</b></div>
+      <div class="row"><span>motor</span><b>DuckDB-WASM</b></div>
+      <div class="row"><span>gráficos</span><b>Apache ECharts</b></div>
+    </div>
+  </section>
+
+  <main>
+    <div id="loading" class="loading">
+      <div class="spinner"></div>
+      <div>Leyendo Parquet con DuckDB-WASM…</div>
+    </div>
+
+    <div id="content" hidden>
+      <div class="filterbar">
+        <span class="lbl">Filtrar por país</span>
+        <span class="select-wrap">
+          <select id="country-select" disabled>
+            <option value="">Todos los países</option>
+          </select>
+        </span>
+        <button class="clear" id="country-clear" hidden>✕ limpiar</button>
+        <span class="scope" id="scope-note">alcance: <b>muestra completa</b></span>
+      </div>
+      <div class="kpi-strip" id="kpis"></div>
+      <div class="grid" id="cards"></div>
+    </div>
+  </main>
+
+  <footer>
+    <div>Atlas of the Erased — vista previa funcional del pipeline OSM → OHM.</div>
+    <div><code>web/data/sample_001_enriched</code></div>
+  </footer>
+
+  <script type="module">
+    import * as duckdb from 'https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.28.0/+esm';
+
+    // Catch ALL unhandled errors and surface them so the UI never stalls
+    // silently on a CDN failure / fetch error / Arrow conversion issue.
+    window.addEventListener('error', e => surfaceError(e.error || e.message));
+    window.addEventListener('unhandledrejection', e => surfaceError(e.reason));
+    function surfaceError(err) {
+      const $l = document.getElementById('loading');
+      if (!$l || $l.hidden) return;
+      const msg = (err && err.stack) || (err && err.message) || String(err);
+      $l.innerHTML = `<div class="err"><b>Falla al iniciar:</b><br><code style="white-space:pre-wrap;">${
+        String(msg).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))
+      }</code></div>`;
+    }
+
+    const DATA_BASE = `${window.location.origin}/data/sample_001_enriched`;
+    const NODES_URL = `${DATA_BASE}/node/data.bin`;
+    const WAYS_URL  = `${DATA_BASE}/way/data.bin`;
+    // Natural Earth simplified countries (≈250 KB). Public CDN via jsdelivr.
+    const COUNTRIES_URL = 'https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@v5.1.2/geojson/ne_50m_admin_0_countries.geojson';
+
+    const $loading = document.getElementById('loading');
+    const $content = document.getElementById('content');
+    const $kpis    = document.getElementById('kpis');
+    const $cards   = document.getElementById('cards');
+    const $select  = document.getElementById('country-select');
+    const $clear   = document.getElementById('country-clear');
+    const $scope   = document.getElementById('scope-note');
+
+    const PALETTE = {
+      paper:   getCSS('--paper'),
+      surface: getCSS('--surface'),
+      ink:     getCSS('--ink'),
+      muted:   getCSS('--muted'),
+      line:    getCSS('--line'),
+      ohm:     getCSS('--ohm'),
+      ohm2:    getCSS('--ohm-2'),
+      ohmDeep: getCSS('--ohm-deep'),
+      osm:     getCSS('--osm'),
+      osm2:    getCSS('--osm-2'),
+      node:    getCSS('--node'),
+      way:     getCSS('--way'),
+      gold:    getCSS('--gold'),
+      neutral: getCSS('--neutral'),
+    };
+    function getCSS(name) {
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
+    const FONT_SANS = "'Geist', system-ui, sans-serif";
+    const FONT_MONO = "'JetBrains Mono', monospace";
+    const FONT_SERIF = "'Fraunces', serif";
+
+    function fail(msg) {
+      $loading.innerHTML = `<div class="err">${msg}</div>`;
+    }
+
+    // ── DuckDB init ──────────────────────────────────────────
+    const bundles = duckdb.getJsDelivrBundles();
+    const bundle = await duckdb.selectBundle(bundles);
+    const workerUrl = URL.createObjectURL(
+      new Blob([`importScripts("${bundle.mainWorker}");`], { type: 'text/javascript' })
+    );
+    const worker = new Worker(workerUrl);
+    const db = new duckdb.AsyncDuckDB(new duckdb.ConsoleLogger(), worker);
+    await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+    URL.revokeObjectURL(workerUrl);
+    const conn = await db.connect();
+
+    const COLS = `
+      id, num_versions, distinct_users,
+      lifetime_days, age_at_deletion_days,
+      deleted_at, last_changeset, last_lat, last_lon,
+      good_tags, cs_comment, cs_created_by, cs_user, comment_signal
+    `;
+    try {
+      await conn.query(`
+        CREATE OR REPLACE VIEW candidates AS
+        SELECT ${COLS}, 'node' AS obj_type
+          FROM read_parquet('${NODES_URL}', hive_partitioning=false)
+        UNION ALL
+        SELECT ${COLS}, 'way' AS obj_type
+          FROM read_parquet('${WAYS_URL}',  hive_partitioning=false);
+      `);
+    } catch (e) {
+      fail(`No se pudo cargar el parquet:<br><code>${e.message}</code>`);
+      throw e;
+    }
+
+    const tableToRows = (r) => r.toArray().map(x => x.toJSON());
+    const num = (v) => v == null ? 0 : Number(v);
+
+    // Pull every row once. All aggregations are computed in JS so a country
+    // filter can rescope every card without round-tripping DuckDB.
+    // CAST last_lat/last_lon (stored as decimal128) to DOUBLE — otherwise
+    // they come through Arrow as opaque Decimal objects that fail Number()
+    // and break country classification.
+    $loading.querySelector('div:last-child').textContent = 'Leyendo candidatos…';
+    const ALL_ROWS = tableToRows(await conn.query(`
+      SELECT id, num_versions, distinct_users,
+             lifetime_days, age_at_deletion_days,
+             deleted_at, last_changeset,
+             CAST(last_lat AS DOUBLE) AS last_lat,
+             CAST(last_lon AS DOUBLE) AS last_lon,
+             good_tags, cs_comment, cs_created_by, cs_user, comment_signal,
+             obj_type
+      FROM candidates;
+    `));
+
+    // ── Country classification (inline PIP, no external deps) ──
+    // Build a bbox-indexed list of country polygons from Natural Earth
+    // GeoJSON, then do ray-casting point-in-polygon per candidate. Bbox
+    // prefilter keeps ~177 countries × N points well under a second.
+    $loading.querySelector('div:last-child').textContent = 'Cargando países…';
+    let countryIndex = null;
+    try {
+      const resp = await fetch(COUNTRIES_URL);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const geo = await resp.json();
+      countryIndex = buildCountryIndex(geo);
+    } catch (e) {
+      console.warn('Country classification disabled — geojson fetch failed:', e);
+    }
+
+    function buildCountryIndex(geo) {
+      const out = [];
+      for (const f of (geo.features || [])) {
+        const g = f.geometry;
+        if (!g) continue;
+        const polys = [];
+        if (g.type === 'Polygon') polys.push(g.coordinates);
+        else if (g.type === 'MultiPolygon') for (const p of g.coordinates) polys.push(p);
+        else continue;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const rings of polys)
+          for (const ring of rings)
+            for (const pt of ring) {
+              const x = pt[0], y = pt[1];
+              if (x < minX) minX = x; if (x > maxX) maxX = x;
+              if (y < minY) minY = y; if (y > maxY) maxY = y;
+            }
+        const name = (f.properties && (f.properties.ADMIN || f.properties.NAME ||
+                                       f.properties.name  || f.properties.SOVEREIGNT)) || null;
+        if (!name) continue;
+        out.push({ name, polys, bbox: [minX, minY, maxX, maxY] });
+      }
+      return out;
+    }
+
+    function pointInRing(x, y, ring) {
+      let inside = false;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const xi = ring[i][0], yi = ring[i][1];
+        const xj = ring[j][0], yj = ring[j][1];
+        const intersect = ((yi > y) !== (yj > y)) &&
+                          (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    function classifyCountry(lat, lon) {
+      if (!countryIndex || !isFinite(lat) || !isFinite(lon)) return null;
+      for (const f of countryIndex) {
+        const b = f.bbox;
+        if (lon < b[0] || lon > b[2] || lat < b[1] || lat > b[3]) continue;
+        for (const rings of f.polys) {
+          // outer ring must contain it, holes must not
+          if (!pointInRing(lon, lat, rings[0])) continue;
+          let inHole = false;
+          for (let i = 1; i < rings.length; i++) {
+            if (pointInRing(lon, lat, rings[i])) { inHole = true; break; }
+          }
+          if (!inHole) return f.name;
+        }
+      }
+      return null;
+    }
+
+    $loading.querySelector('div:last-child').textContent = 'Clasificando por país…';
+    for (const r of ALL_ROWS) {
+      r._lat = Number(r.last_lat);
+      r._lon = Number(r.last_lon);
+      r.country = classifyCountry(r._lat, r._lon);
+    }
+
+    // ── Aggregation helpers (run on any filtered subset) ─────
+    const fmt    = (n) => Number(n).toLocaleString('en-US');
+    const pct    = (a, b) => b > 0 ? ((a / b) * 100).toFixed(1) + '%' : '–';
+    const toDate = (v) => {
+      if (v == null) return null;
+      if (v instanceof Date) return v;
+      if (typeof v === 'bigint') { const n = Number(v); return new Date(n > 1e15 ? n/1000 : n); }
+      const d = new Date(v); return isNaN(d) ? null : d;
+    };
+    const yr  = (v) => { const d = toDate(v); return d ? d.getUTCFullYear() : null; };
+    const esc = (s) => String(s ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+
+    function tagsToObj(tags) {
+      if (!tags) return {};
+      if (tags instanceof Map) return Object.fromEntries(tags);
+      if (Array.isArray(tags)) {
+        const out = {};
+        for (const t of tags) {
+          if (Array.isArray(t)) out[t[0]] = t[1];
+          else if (t && t.key !== undefined) out[t.key] = t.value;
+        }
+        return out;
+      }
+      return typeof tags === 'object' ? tags : {};
+    }
+
+    function topN(map, n) {
+      return [...map.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, n)
+        .map(([k, cnt]) => ({ k, cnt }));
+    }
+
+    function compute(rows) {
+      const N = rows.length;
+      let nodes = 0, ways = 0, strong = 0, neutral = 0;
+      let sumVer = 0, cntVer = 0;
+      let sumLife = 0, cntLife = 0;
+      let minD = null, maxD = null;
+      const users = new Set();
+      const changesets = new Set();
+      const keyCnt  = new Map();
+      const pairCnt = new Map();
+      const yearCnt = new Map();       // yr → { nodes, ways }
+      const userCnt = new Map();
+      const editorCnt = new Map();
+      const matrixCnt = new Map();      // `${type}|${signal}` → cnt
+      const tagBucket = new Map();      // bucket → cnt
+      const lifeBucket = new Map();
+      const countryCnt = new Map();
+
+      const TAG_KEYS  = ['0', '1-2', '3-5', '6-10', '11+'];
+      const LIFE_KEYS = ['< 1 d', '1-30 d', '1-12 mo', '1-3 yr', '3-7 yr', '7+ yr'];
+      TAG_KEYS.forEach(k => tagBucket.set(k, 0));
+      LIFE_KEYS.forEach(k => lifeBucket.set(k, 0));
+
+      for (const r of rows) {
+        if (r.obj_type === 'node') nodes++; else if (r.obj_type === 'way') ways++;
+        if (r.comment_signal === 'strong')  strong++;
+        if (r.comment_signal === 'neutral') neutral++;
+        const v = Number(r.num_versions); if (isFinite(v)) { sumVer += v; cntVer++; }
+        const lf = Number(r.lifetime_days); if (isFinite(lf)) { sumLife += lf; cntLife++; }
+        const d  = toDate(r.deleted_at);
+        if (d) {
+          if (!minD || d < minD) minD = d;
+          if (!maxD || d > maxD) maxD = d;
+          const y = d.getUTCFullYear();
+          let yObj = yearCnt.get(y);
+          if (!yObj) { yObj = { nodes: 0, ways: 0 }; yearCnt.set(y, yObj); }
+          if (r.obj_type === 'node') yObj.nodes++; else if (r.obj_type === 'way') yObj.ways++;
+        }
+        if (r.cs_user) users.add(String(r.cs_user));
+        if (r.last_changeset != null) changesets.add(String(r.last_changeset));
+
+        const userKey = r.cs_user || '(desconocido)';
+        userCnt.set(userKey, (userCnt.get(userKey) || 0) + 1);
+        const editorKey = r.cs_created_by || '(desconocido)';
+        editorCnt.set(editorKey, (editorCnt.get(editorKey) || 0) + 1);
+
+        const mkey = `${r.obj_type}|${r.comment_signal || '(ninguna)'}`;
+        matrixCnt.set(mkey, (matrixCnt.get(mkey) || 0) + 1);
+
+        const tags = tagsToObj(r.good_tags);
+        const keys = Object.keys(tags);
+        for (const k of keys) keyCnt.set(k, (keyCnt.get(k) || 0) + 1);
+        for (const [k, val] of Object.entries(tags)) {
+          const p = `${k}=${val}`;
+          pairCnt.set(p, (pairCnt.get(p) || 0) + 1);
+        }
+        const nKeys = keys.length;
+        const tBucket = nKeys === 0 ? '0' : nKeys <= 2 ? '1-2' : nKeys <= 5 ? '3-5' : nKeys <= 10 ? '6-10' : '11+';
+        tagBucket.set(tBucket, (tagBucket.get(tBucket) || 0) + 1);
+
+        if (isFinite(lf)) {
+          const lBucket = lf < 1 ? '< 1 d' : lf < 30 ? '1-30 d' : lf < 365 ? '1-12 mo' :
+                          lf < 365*3 ? '1-3 yr' : lf < 365*7 ? '3-7 yr' : '7+ yr';
+          lifeBucket.set(lBucket, (lifeBucket.get(lBucket) || 0) + 1);
+        }
+
+        const cKey = r.country || '(sin clasificar)';
+        countryCnt.set(cKey, (countryCnt.get(cKey) || 0) + 1);
+      }
+
+      const perYear = [...yearCnt.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([y, v]) => ({ yr: y, nodes: v.nodes, ways: v.ways, total: v.nodes + v.ways }));
+
+      return {
+        totals: {
+          total: N, nodes, ways, strong, neutral,
+          users: users.size, changesets: changesets.size,
+          avg_versions: cntVer ? sumVer / cntVer : 0,
+          avg_lifetime: cntLife ? sumLife / cntLife : 0,
+          first_del: minD, last_del: maxD,
+        },
+        topKeys:    topN(keyCnt, 20).map(r => ({ key: r.k, cnt: r.cnt })),
+        topPairs:   topN(pairCnt, 20).map(r => ({ pair: r.k, cnt: r.cnt })),
+        perYear,
+        topUsers:   topN(userCnt, 12).map(r => ({ u: r.k, cnt: r.cnt })),
+        topEditors: topN(editorCnt, 10).map(r => ({ editor: r.k, cnt: r.cnt })),
+        matrix:     [...matrixCnt.entries()].map(([k, cnt]) => {
+                      const [tipo, senal] = k.split('|');
+                      return { tipo, senal, cnt };
+                    }).sort((a, b) => a.tipo.localeCompare(b.tipo) || b.cnt - a.cnt),
+        tagDist:    TAG_KEYS.map(k => ({ bucket: k, cnt: tagBucket.get(k) || 0 })),
+        lifeDist:   LIFE_KEYS.map(k => ({ bucket: k, cnt: lifeBucket.get(k) || 0 })),
+        perCountry: topN(countryCnt, 20).map(r => ({ country: r.k, cnt: r.cnt })),
+      };
+    }
+
+    // ── Country dropdown population ─────────────────────────
+    const allCountryCounts = (() => {
+      const m = new Map();
+      for (const r of ALL_ROWS) {
+        const k = r.country || '(sin clasificar)';
+        m.set(k, (m.get(k) || 0) + 1);
+      }
+      return [...m.entries()].sort((a, b) => b[1] - a[1]);
+    })();
+    if (allCountryCounts.length) {
+      $select.disabled = false;
+      $select.innerHTML = '<option value="">Todos los países</option>' +
+        allCountryCounts.map(([c, n]) =>
+          `<option value="${esc(c)}">${esc(c)} · ${fmt(n)}</option>`
+        ).join('');
+    } else {
+      $select.disabled = true;
+    }
+
+    // ── Card list ───────────────────────────────────────────
+    const cardDefs = [
+      { id:'c-time',   col:8, title:'Eliminaciones <em>en el tiempo</em>',  tag:'por año · apilado',
+        sub:'Conteo anual de objetos eliminados, separado por tipo de geometría. Pasa el cursor sobre las barras para inspeccionar.', chart:'tall' },
+      { id:'c-signal', col:4, title:'Señal <em>por tipo</em>',          tag:'dona',
+        sub:'Cómo se reparte la señal fuerte (intención clara de eliminación en el changeset) entre nodos y vías.', chart:'tall' },
+      { id:'c-country',col:12, title:'Eliminaciones <em>por país</em>',    tag:'top 20',
+        sub:'Cada candidato se geolocaliza por su última coordenada conocida y se cruza con polígonos de país (Natural Earth 50m). Las vías sin coordenada quedan como “(sin clasificar)”.', chart:'tall' },
+      { id:'c-keys',   col:6, title:'Etiquetas (claves) <em>más eliminadas</em>',     tag:'top 20', list:'keys' },
+      { id:'c-pairs',  col:6, title:'Etiquetas (clave=valor) <em>más eliminadas</em>', tag:'top 20', list:'pairs' },
+      { id:'c-life',   col:4, title:'Vida útil <em>antes de eliminar</em>', tag:'rangos', chart:'short' },
+      { id:'c-tagdist',col:4, title:'Etiquetas <em>por objeto</em>',          tag:'distribución', chart:'short' },
+      { id:'c-mx',     col:4, title:'Matriz <em>tipo × señal</em>',     tag:'conteo', table:'matrix' },
+      { id:'c-users',  col:6, title:'Usuarios que <em>más eliminan</em>',     tag:'top 12', chart:'tall' },
+      { id:'c-editors',col:6, title:'Editores <em>usados</em>',             tag:'top 10', chart:'tall' },
+    ];
+
+    // Build card DOM once. Charts are initialized later, and renderAll()
+    // pushes new data into the same instances when the filter changes.
+    $cards.innerHTML = cardDefs.map((c, i) => {
+      const inner = c.chart
+        ? `<div class="chart ${c.chart === 'tall' ? 'tall' : c.chart === 'short' ? 'short' : ''}" id="${c.id}"></div>`
+        : c.list
+          ? `<div class="rank-mini" id="${c.id}"></div>`
+          : `<div id="${c.id}"></div>`;
+      return `<div class="card col-${c.col}" style="animation-delay:${(i+8)*40}ms;">
+        <div class="card-head">
+          <h2>${c.title}</h2>
+          <span class="tag">${c.tag}</span>
+        </div>
+        ${c.sub ? `<div class="card-sub">${c.sub}</div>` : ''}
+        ${inner}
+      </div>`;
+    }).join('');
+
+    // Reveal content BEFORE chart init so ECharts can measure real widths.
+    $loading.hidden = true;
+    $content.hidden = false;
+    if (document.fonts && document.fonts.ready) {
+      try { await document.fonts.ready; } catch {}
+    }
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    // ── ECharts setup ────────────────────────────────────────
+    const baseTheme = {
+      textStyle: { fontFamily: FONT_SANS, color: PALETTE.ink },
+      grid: { left: 36, right: 16, top: 18, bottom: 28, containLabel: true },
+      tooltip: {
+        backgroundColor: 'rgba(26,31,26,.96)',
+        borderColor: 'rgba(26,31,26,1)',
+        borderWidth: 0,
+        padding: [8, 10],
+        textStyle: { color: '#f5f1e8', fontFamily: FONT_MONO, fontSize: 11.5 },
+        extraCssText: 'border-radius:6px; box-shadow: 0 8px 24px -10px rgba(40,33,15,.4);',
+      },
+      axisLine: { lineStyle: { color: PALETTE.line } },
+      axisLabel: { color: PALETTE.muted, fontFamily: FONT_MONO, fontSize: 11 },
+    };
+
+    // Init chart instances once — keyed by card id.
+    const charts = {};
+    function initChart(id) {
+      const dom = document.getElementById(id);
+      const c = echarts.init(dom, null, { renderer: 'svg' });
+      addResize(c);
+      charts[id] = c;
+      return c;
+    }
+    ['c-time','c-signal','c-country','c-life','c-tagdist','c-users','c-editors'].forEach(initChart);
+
+    // ── Per-chart option builders ────────────────────────────
+    function optsTime(perYear) {
+      const years = perYear.map(r => num(r.yr));
+      const nodes = perYear.map(r => num(r.nodes));
+      const ways  = perYear.map(r => num(r.ways));
+      return {
+        ...baseTheme,
+        legend: { right: 0, top: 0, itemWidth: 10, itemHeight: 10,
+                  textStyle: { color: PALETTE.ink, fontFamily: FONT_MONO, fontSize: 11 } },
+        tooltip: { ...baseTheme.tooltip, trigger: 'axis', axisPointer: { type: 'shadow' } },
+        grid: { left: 12, right: 12, top: 34, bottom: 32, containLabel: true },
+        xAxis: { type: 'category', data: years, axisLine: baseTheme.axisLine,
+                 axisTick: { show: false }, axisLabel: baseTheme.axisLabel },
+        yAxis: { type: 'value', splitLine: { lineStyle: { color: PALETTE.line, type: 'dashed' } },
+                 axisLine: { show: false }, axisTick: { show: false }, axisLabel: baseTheme.axisLabel },
+        series: [
+          { name: 'nodos', type: 'bar', stack: 'g', data: nodes,
+            itemStyle: { color: PALETTE.node }, emphasis: { itemStyle: { color: '#3d76a8' } },
+            barMaxWidth: 38 },
+          { name: 'vías', type: 'bar', stack: 'g', data: ways,
+            itemStyle: { color: PALETTE.way, borderRadius: [3,3,0,0] },
+            emphasis: { itemStyle: { color: '#c97a4e' } }, barMaxWidth: 38 },
+        ],
+      };
+    }
+
+    function optsSignal(matrix) {
+      const TIPO_ES = { node: 'nodo', way: 'vía' };
+      const SENAL_ES = { strong: 'fuerte', neutral: 'neutral', '(ninguna)': '(ninguna)' };
+      const data = matrix.map(r => ({
+        name: `${TIPO_ES[r.tipo] || r.tipo} · ${SENAL_ES[r.senal] || r.senal}`,
+        value: num(r.cnt),
+        itemStyle: { color: r.senal === 'strong'
+          ? (r.tipo === 'node' ? PALETTE.ohm : PALETTE.ohmDeep)
+          : (r.tipo === 'node' ? PALETTE.node : PALETTE.way) },
+      }));
+      return {
+        ...baseTheme,
+        tooltip: { ...baseTheme.tooltip, trigger: 'item',
+                   formatter: p => `${p.name}<br/><b style="color:#fff">${fmt(p.value)}</b>  (${p.percent}%)` },
+        legend: { bottom: 0, left: 'center', icon: 'circle', itemWidth: 8, itemHeight: 8,
+                  textStyle: { color: PALETTE.ink, fontFamily: FONT_MONO, fontSize: 10.5 } },
+        series: [{ type: 'pie', radius: ['52%', '78%'], center: ['50%', '42%'],
+                   avoidLabelOverlap: true, label: { show: false }, labelLine: { show: false },
+                   padAngle: 2, itemStyle: { borderColor: PALETTE.surface, borderWidth: 2 },
+                   data }],
+      };
+    }
+
+    function optsCountry(perCountry) {
+      const names  = perCountry.map(r => r.country);
+      const counts = perCountry.map(r => num(r.cnt));
+      return {
+        ...baseTheme,
+        tooltip: { ...baseTheme.tooltip, trigger: 'axis', axisPointer: { type: 'shadow' } },
+        grid: { left: 8, right: 60, top: 10, bottom: 24, containLabel: true },
+        xAxis: { type: 'value', splitLine: { lineStyle: { color: PALETTE.line, type: 'dashed' } },
+                 axisLine: { show: false }, axisTick: { show: false }, axisLabel: baseTheme.axisLabel },
+        yAxis: { type: 'category', data: names, inverse: true,
+                 axisLine: { show: false }, axisTick: { show: false },
+                 axisLabel: { ...baseTheme.axisLabel, fontFamily: FONT_MONO, color: PALETTE.ink,
+                              width: 200, overflow: 'truncate' } },
+        series: [{
+          type: 'bar', data: counts,
+          itemStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+              { offset: 0, color: PALETTE.ohmDeep }, { offset: 1, color: PALETTE.gold },
+            ]),
+            borderRadius: [0, 3, 3, 0],
+          },
+          barMaxWidth: 16,
+          label: { show: true, position: 'right',
+                   color: PALETTE.ink, fontFamily: FONT_MONO, fontSize: 10.5,
+                   formatter: p => fmt(p.value) },
+        }],
+      };
+    }
+
+    function optsLife(lifeDist) {
+      const buckets = lifeDist.map(r => r.bucket);
+      const counts  = lifeDist.map(r => num(r.cnt));
+      return {
+        ...baseTheme,
+        tooltip: { ...baseTheme.tooltip, trigger: 'axis', axisPointer: { type: 'shadow' } },
+        grid: { left: 8, right: 24, top: 10, bottom: 22, containLabel: true },
+        xAxis: { type: 'value', splitLine: { lineStyle: { color: PALETTE.line, type: 'dashed' } },
+                 axisLine: { show: false }, axisTick: { show: false }, axisLabel: baseTheme.axisLabel },
+        yAxis: { type: 'category', data: buckets, inverse: true,
+                 axisLine: { show: false }, axisTick: { show: false },
+                 axisLabel: { ...baseTheme.axisLabel, fontFamily: FONT_MONO, color: PALETTE.ink } },
+        series: [{
+          type: 'bar', data: counts,
+          itemStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+              { offset: 0, color: PALETTE.ohmDeep }, { offset: 1, color: PALETTE.ohm2 },
+            ]),
+            borderRadius: [0, 3, 3, 0],
+          },
+          barMaxWidth: 22,
+          label: { show: true, position: 'right', color: PALETTE.ink,
+                   fontFamily: FONT_MONO, fontSize: 10.5, formatter: p => fmt(p.value) },
+        }],
+      };
+    }
+
+    function optsTagDist(tagDist) {
+      const buckets = tagDist.map(r => r.bucket);
+      const counts  = tagDist.map(r => num(r.cnt));
+      return {
+        ...baseTheme,
+        tooltip: { ...baseTheme.tooltip, trigger: 'axis', axisPointer: { type: 'shadow' } },
+        grid: { left: 8, right: 8, top: 18, bottom: 24, containLabel: true },
+        xAxis: { type: 'category', data: buckets, axisLine: baseTheme.axisLine,
+                 axisTick: { show: false }, axisLabel: { ...baseTheme.axisLabel, color: PALETTE.ink } },
+        yAxis: { type: 'value', splitLine: { lineStyle: { color: PALETTE.line, type: 'dashed' } },
+                 axisLine: { show: false }, axisTick: { show: false }, axisLabel: baseTheme.axisLabel },
+        series: [{
+          type: 'bar', data: counts,
+          itemStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: PALETTE.gold }, { offset: 1, color: '#a07621' },
+            ]),
+            borderRadius: [3, 3, 0, 0],
+          },
+          barMaxWidth: 38,
+        }],
+      };
+    }
+
+    function optsRankBar(rows, field, gradStart, gradEnd, labelWidth) {
+      const names  = rows.map(r => r[field] || '(desconocido)');
+      const counts = rows.map(r => num(r.cnt));
+      return {
+        ...baseTheme,
+        tooltip: { ...baseTheme.tooltip, trigger: 'axis', axisPointer: { type: 'shadow' } },
+        grid: { left: 8, right: 36, top: 10, bottom: 24, containLabel: true },
+        xAxis: { type: 'value', splitLine: { lineStyle: { color: PALETTE.line, type: 'dashed' } },
+                 axisLine: { show: false }, axisTick: { show: false }, axisLabel: baseTheme.axisLabel },
+        yAxis: { type: 'category', data: names, inverse: true,
+                 axisLine: { show: false }, axisTick: { show: false },
+                 axisLabel: { ...baseTheme.axisLabel, fontFamily: FONT_MONO, color: PALETTE.ink,
+                              width: labelWidth, overflow: 'truncate' } },
+        series: [{
+          type: 'bar', data: counts,
+          itemStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+              { offset: 0, color: gradStart }, { offset: 1, color: gradEnd },
+            ]),
+            borderRadius: [0, 3, 3, 0],
+          },
+          barMaxWidth: 14,
+          label: { show: true, position: 'right', color: PALETTE.ink,
+                   fontFamily: FONT_MONO, fontSize: 10.5, formatter: p => fmt(p.value) },
+        }],
+      };
+    }
+
+    function renderRank(el, rows, field, cls) {
+      if (!rows.length) { el.innerHTML = '<div style="color:var(--muted);font-size:.8rem;">sin datos</div>'; return; }
+      const max = Math.max(...rows.map(r => num(r.cnt)));
+      el.innerHTML = rows.map(r => {
+        const c = num(r.cnt);
+        const w = Math.max(2, (c / max) * 100);
+        return `<div class="rank-row ${cls}">
+          <span class="bar" style="width:${w}%;"></span>
+          <span class="key">${esc(r[field])}</span>
+          <span class="cnt">${fmt(c)}</span>
+        </div>`;
+      }).join('');
+    }
+
+    function renderKpis(totals) {
+      const T = totals.total;
+      const yrTxt = (d) => d ? d.getUTCFullYear() : '–';
+      const kpi = (lbl, val, sub='', cls='') => `
+        <div class="kpi ${cls}">
+          <div class="lbl">${lbl}</div>
+          <div class="val">${val}</div>
+          ${sub ? `<div class="sub">${sub}</div>` : ''}
+        </div>`;
+      $kpis.innerHTML = [
+        kpi('Total candidatos', fmt(T), `${yrTxt(totals.first_del)} – ${yrTxt(totals.last_del)}`, 'accent'),
+        kpi('Nodos', fmt(totals.nodes), `<b>${pct(totals.nodes, T)}</b> del total`, 'node'),
+        kpi('Vías',  fmt(totals.ways),  `<b>${pct(totals.ways, T)}</b> del total`,  'way'),
+        kpi('Señal fuerte',  fmt(totals.strong),  `<b>${pct(totals.strong, T)}</b> · por comentario`, 'strong'),
+        kpi('Señal neutral', fmt(totals.neutral), `<b>${pct(totals.neutral, T)}</b> · ambiguo`, 'neutral'),
+        kpi('Eliminadores distintos', fmt(totals.users), `<b>${fmt(totals.changesets)}</b> changesets`, 'gold'),
+        kpi('Versiones promedio',  (totals.avg_versions || 0).toFixed(1), 'ediciones antes de eliminar'),
+        kpi('Vida útil promedio',  fmt(Math.round(totals.avg_lifetime || 0)) + ' d', 'días vivo en el mapa'),
+      ].join('');
+      [...$kpis.children].forEach((el, i) => el.style.animationDelay = `${i * 35}ms`);
+    }
+
+    function renderMatrix(matrix) {
+      const el = document.getElementById('c-mx');
+      const TIPO_ES = { node: 'nodo', way: 'vía' };
+      const SENAL_ES = { strong: 'fuerte', neutral: 'neutral', '(ninguna)': '(ninguna)' };
+      const grandTotal = matrix.reduce((s, r) => s + num(r.cnt), 0);
+      const rows = matrix.map(r => `
+        <tr>
+          <td><span class="chip ${r.tipo}"><span class="swatch"></span>${TIPO_ES[r.tipo] || r.tipo}</span></td>
+          <td><span class="chip ${r.senal}"><span class="swatch"></span>${SENAL_ES[r.senal] || r.senal}</span></td>
+          <td class="n">${fmt(num(r.cnt))}</td>
+          <td class="n" style="color:var(--muted);">${pct(num(r.cnt), grandTotal)}</td>
+        </tr>`).join('');
+      el.innerHTML = `<table class="matrix-table">
+        <thead><tr><th>tipo</th><th>señal</th><th class="n">conteo</th><th class="n">%</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+    }
+
+    function renderAll(agg) {
+      renderKpis(agg.totals);
+      charts['c-time'].setOption(optsTime(agg.perYear), true);
+      charts['c-signal'].setOption(optsSignal(agg.matrix), true);
+      charts['c-country'].setOption(optsCountry(agg.perCountry), true);
+      renderRank(document.getElementById('c-keys'),  agg.topKeys,  'key',  '');
+      renderRank(document.getElementById('c-pairs'), agg.topPairs, 'pair', 'osm');
+      charts['c-life'].setOption(optsLife(agg.lifeDist), true);
+      charts['c-tagdist'].setOption(optsTagDist(agg.tagDist), true);
+      renderMatrix(agg.matrix);
+      charts['c-users'].setOption(optsRankBar(agg.topUsers,   'u',      '#1f4d33',     PALETTE.ohm2, 130), true);
+      charts['c-editors'].setOption(optsRankBar(agg.topEditors,'editor', '#8a4424',     PALETTE.osm2, 160), true);
+    }
+
+    // Initial render with everything
+    let currentAgg = compute(ALL_ROWS);
+    renderAll(currentAgg);
+
+    // Filter wiring
+    function applyFilter() {
+      const sel = $select.value;
+      $clear.hidden = !sel;
+      const scopedRows = sel ? ALL_ROWS.filter(r => (r.country || '(sin clasificar)') === sel) : ALL_ROWS;
+      $scope.innerHTML = sel
+        ? `alcance: <b>${esc(sel)}</b> · ${fmt(scopedRows.length)} de ${fmt(ALL_ROWS.length)}`
+        : `alcance: <b>muestra completa</b> · ${fmt(ALL_ROWS.length)} candidatos`;
+      currentAgg = compute(scopedRows);
+      renderAll(currentAgg);
+    }
+    $select.addEventListener('change', applyFilter);
+    $clear.addEventListener('click', () => { $select.value = ''; applyFilter(); });
+    applyFilter(); // set initial scope label
+
+    // Resize handling: ResizeObserver catches card resizes from grid
+    // breakpoints, sidebar collapse, font load reflow — window 'resize'
+    // alone misses those because the window itself doesn't change.
+    function addResize(chart) {
+      const dom = chart.getDom();
+      // Initial resize after a frame, in case fonts loaded between init
+      // and first paint.
+      requestAnimationFrame(() => chart.resize());
+      const ro = new ResizeObserver(() => chart.resize());
+      ro.observe(dom);
+      window.addEventListener('resize', () => chart.resize());
+    }
+
+    // Final safety net: after all charts mount, force one more resize pass.
+    window.addEventListener('load', () => {
+      document.querySelectorAll('.chart').forEach(el => {
+        const inst = echarts.getInstanceByDom(el);
+        if (inst) inst.resize();
+      });
+    });
+  </script>
+</body>
+</html>

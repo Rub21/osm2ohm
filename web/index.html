@@ -3,108 +3,498 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OSM deleted data as candidates for OHM</title>
+  <title>Atlas of the Erased — candidates map</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..900,30..100&family=Geist:wght@300..700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
   <style>
+    :root {
+      --paper:        #f5f1e8;
+      --paper-2:      #efeadd;
+      --surface:      #fbf9f3;
+      --surface-2:    #ffffff;
+      --ink:          #1a1f1a;
+      --ink-2:        #3a4038;
+      --muted:        #777a72;
+      --line:         #d9d2c0;
+      --line-strong:  #b8b09a;
+
+      --ohm:          #2c6e49;
+      --ohm-2:        #4c956c;
+      --ohm-deep:     #1f4d33;
+      --osm:          #b8623c;
+      --osm-2:        #d68a5a;
+      --node:         #2f5d8f;
+      --way:          #b8623c;
+      --gold:         #c8973a;
+      --strong:       #2c6e49;
+      --neutral:      #8a8d82;
+
+      --shadow-1: 0 1px 0 rgba(40,33,15,.04), 0 1px 2px rgba(40,33,15,.04);
+      --shadow-2: 0 1px 0 rgba(40,33,15,.04), 0 8px 24px -12px rgba(40,33,15,.18);
+    }
+
     *,*::before,*::after { box-sizing: border-box; }
-    body, html { margin: 0; padding: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; color: #222; }
+    html, body {
+      margin: 0; padding: 0; height: 100%;
+      font-family: 'Geist', -apple-system, system-ui, sans-serif;
+      font-size: 14px; color: var(--ink); background: var(--paper);
+      -webkit-font-smoothing: antialiased;
+    }
 
-    #app { display: grid; grid-template-columns: 340px 1fr 380px; height: 100vh; min-height: 0; }
+    /* ── Layout ─────────────────────────────────────────── */
+    #app {
+      display: grid;
+      grid-template-columns: 360px 1fr 400px;
+      height: 100vh; min-height: 0;
+    }
 
-    #sidebar { display: flex; flex-direction: column; border-right: 1px solid #ddd; min-width: 0; min-height: 0; overflow: hidden; }
-    #header  { padding: .75rem 1rem; background: #f7f7f7; border-bottom: 1px solid #ddd; }
-    #header h1 { margin: 0 0 .25rem 0; font-size: 1rem; }
-    #header .stats { font-size: .8rem; color: #666; }
+    /* ── Sidebar ────────────────────────────────────────── */
+    #sidebar {
+      display: flex; flex-direction: column;
+      border-right: 1px solid var(--line);
+      background: var(--paper);
+      min-width: 0; min-height: 0; overflow: hidden;
+    }
 
-    #filters { padding: .5rem 1rem .6rem; background: #fafafa; border-bottom: 1px solid #eee; display: flex; flex-direction: column; gap: .45rem; }
-    #filters .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
-    #filters label { font-size: .75rem; color: #555; display: flex; align-items: center; gap: .25rem; cursor: pointer; }
+    #header {
+      padding: 1rem 1.25rem 1rem;
+      border-bottom: 1px solid var(--line);
+      background: var(--paper);
+    }
+    #header .brand {
+      display: flex; align-items: center; gap: .55rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .7rem;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: var(--ohm);
+      margin-bottom: .4rem;
+    }
+    #header .brand .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--ohm);
+      box-shadow: 0 0 0 3px rgba(44,110,73,.18);
+    }
+    #header h1 {
+      margin: 0 0 .35rem 0;
+      font-family: 'Fraunces', serif;
+      font-weight: 400;
+      font-variation-settings: 'opsz' 36, 'SOFT' 60;
+      font-size: 1.35rem;
+      line-height: 1.1;
+      letter-spacing: -.015em;
+      color: var(--ink);
+    }
+    #header h1 em { font-style: italic; color: var(--ohm-deep); font-weight: 350; }
+    #header .stats {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .72rem;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    #header .stats b { color: var(--ink); font-weight: 600; }
+    #header .nav {
+      margin-top: .6rem;
+      display: flex; gap: .5rem; align-items: center;
+    }
+    #header .nav a {
+      display: inline-flex; align-items: center; gap: .3rem;
+      font-size: .75rem; color: var(--ohm-deep);
+      text-decoration: none; font-weight: 500;
+      padding: .3rem .55rem;
+      border-radius: 999px;
+      background: var(--paper-2);
+      border: 1px solid var(--line);
+      transition: background .15s, border-color .15s;
+    }
+    #header .nav a:hover { background: var(--surface); border-color: var(--line-strong); }
+
+    /* Filters */
+    #filters {
+      padding: .8rem 1.25rem .9rem;
+      background: var(--paper);
+      border-bottom: 1px solid var(--line);
+      display: flex; flex-direction: column; gap: .6rem;
+    }
+    #filters .row { display: flex; gap: .35rem; flex-wrap: wrap; align-items: center; }
+    #filters label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .7rem;
+      letter-spacing: .04em;
+      color: var(--ink-2);
+      display: inline-flex; align-items: center; gap: .35rem;
+      padding: .25rem .55rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface);
+      cursor: pointer;
+      user-select: none;
+      transition: background .12s, border-color .12s;
+    }
+    #filters label:hover { border-color: var(--line-strong); background: var(--surface-2); }
+    #filters label input { margin: 0; accent-color: var(--ohm); }
+    #filters .divider {
+      width: 1px; height: 16px; background: var(--line);
+      margin: 0 .15rem;
+    }
     #filters .search-wrap { position: relative; width: 100%; }
     #filters .search-wrap::before {
-      content: "🔎";
-      position: absolute; left: .5rem; top: 50%; transform: translateY(-50%);
-      font-size: .7rem; opacity: .5; pointer-events: none;
+      content: '⌕';
+      position: absolute; left: .65rem; top: 50%; transform: translateY(-50%);
+      font-size: .95rem; color: var(--muted); pointer-events: none;
     }
     #filters input[type="text"] {
-      padding: .35rem .5rem .35rem 1.7rem;
-      font-size: .8rem; border: 1px solid #ccc; border-radius: 4px;
+      padding: .5rem .7rem .5rem 1.85rem;
+      font-family: 'Geist', sans-serif;
+      font-size: .82rem;
+      color: var(--ink);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 6px;
       width: 100%;
+      transition: border-color .15s, box-shadow .15s;
     }
-    #filters input[type="text"]:focus { outline: none; border-color: #2080d0; box-shadow: 0 0 0 2px rgba(32, 128, 208, .2); }
-    #filters .hint { font-size: .65rem; color: #999; margin-top: -.15rem; }
-    #filters .hint code { background: #eee; padding: 0 .2rem; border-radius: 2px; font-size: .9em; }
+    #filters input[type="text"]::placeholder { color: var(--muted); }
+    #filters input[type="text"]:focus {
+      outline: none; border-color: var(--ohm);
+      box-shadow: 0 0 0 3px rgba(44,110,73,.15);
+    }
+    #filters .hint {
+      font-size: .68rem; color: var(--muted);
+      margin-top: -.1rem;
+    }
+    #filters .hint code {
+      font-family: 'JetBrains Mono', monospace;
+      background: var(--paper-2);
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: .92em;
+      border: 1px solid var(--line);
+      color: var(--ink-2);
+    }
 
-    #list { flex: 1; overflow-y: auto; }
-    .candidate { padding: .5rem .75rem; border-bottom: 1px solid #eee; cursor: pointer; border-left: 4px solid transparent; }
-    .candidate:hover    { background: #f5faff; }
-    .candidate.active   { background: #e8f4fd; border-left-color: #2080d0 !important; }
-    .candidate.strong   { border-left-color: #1a9850; }
-    .candidate.neutral  { border-left-color: #aaa; }
-    .candidate .title   { font-weight: 600; font-size: .9rem; color: #222; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .candidate .meta    { font-size: .75rem; color: #666; margin-top: .15rem; display: flex; gap: .5rem; flex-wrap: wrap; }
-    .candidate .badge   { display: inline-block; padding: 0 .35rem; border-radius: 3px; font-size: .7rem; font-weight: 600; }
-    .candidate .badge.node { background: #e0e8ff; color: #2050a0; }
-    .candidate .badge.way  { background: #ffe8d8; color: #a05020; }
-    .candidate .badge.strong { background: #d0e8d0; color: #1a6028; }
-    .candidate .comment { font-size: .75rem; color: #888; margin-top: .15rem; font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* Candidate list */
+    #list { flex: 1; overflow-y: auto; background: var(--paper); }
+    #list::-webkit-scrollbar { width: 8px; }
+    #list::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
 
-    #map { height: 100%; background: #eee; }
+    .candidate {
+      padding: .7rem 1.1rem .7rem 1.25rem;
+      border-bottom: 1px solid rgba(217,210,192,.55);
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      transition: background .12s, border-left-color .12s;
+      position: relative;
+    }
+    .candidate:hover  { background: var(--surface); }
+    .candidate.active {
+      background: var(--surface-2);
+      border-left-color: var(--ohm);
+    }
+    .candidate.active::before {
+      content: '';
+      position: absolute; right: 0; top: 0; bottom: 0;
+      width: 3px; background: var(--ohm);
+    }
+    .candidate.strong  { border-left-color: rgba(44,110,73,.45); }
+    .candidate.neutral { border-left-color: rgba(138,141,130,.4); }
 
-    /* ── Details panel (right) ─────────────────────────────── */
-    #details { border-left: 1px solid #ddd; overflow-y: auto; background: #fcfcfc; min-width: 0; min-height: 0; }
-    #details .empty { padding: 2rem 1rem; text-align: center; color: #888; font-size: .85rem; }
-    #details .header { padding: .75rem 1rem; background: #f7f7f7; border-bottom: 1px solid #ddd; }
-    #details .header h2 { margin: 0; font-size: .95rem; word-break: break-word; }
-    #details .header a { color: #2080d0; text-decoration: none; }
-    #details .header a:hover { text-decoration: underline; }
-    #details .header .sub { font-size: .75rem; color: #666; margin-top: .25rem; display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+    .candidate .title {
+      font-family: 'Fraunces', serif;
+      font-weight: 450;
+      font-variation-settings: 'opsz' 18, 'SOFT' 50;
+      font-size: 1rem;
+      letter-spacing: -.005em;
+      color: var(--ink);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      line-height: 1.2;
+    }
+    .candidate .meta {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .68rem;
+      color: var(--muted);
+      margin-top: .3rem;
+      display: flex;
+      gap: .55rem;
+      align-items: center;
+      flex-wrap: wrap;
+      letter-spacing: .03em;
+    }
+    .candidate .badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .65rem;
+      font-weight: 500;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+    .candidate .badge.node   { background: rgba(47,93,143,.12); color: var(--node); }
+    .candidate .badge.way    { background: rgba(184,98,60,.13); color: var(--way); }
+    .candidate .badge.strong { background: rgba(44,110,73,.13); color: var(--ohm); }
+    .candidate .comment {
+      font-family: 'Fraunces', serif;
+      font-weight: 400;
+      font-style: italic;
+      font-size: .82rem;
+      color: var(--ink-2);
+      margin-top: .35rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      opacity: .85;
+    }
+    .candidate .comment::before { content: '“'; color: var(--muted); margin-right: 2px; }
+    .candidate .comment::after  { content: '”'; color: var(--muted); margin-left: 2px; }
 
-    #details section { padding: .75rem 1rem; border-bottom: 1px solid #eee; }
-    #details section h3 { margin: 0 0 .5rem 0; font-size: .75rem; color: #777; text-transform: uppercase; letter-spacing: .03em; }
+    /* ── Map ────────────────────────────────────────────── */
+    #map { height: 100%; background: var(--paper-2); }
+    .leaflet-control-attribution {
+      font-family: 'JetBrains Mono', monospace !important;
+      font-size: 10px !important;
+      background: rgba(251,249,243,.9) !important;
+    }
+    .leaflet-control-zoom a {
+      background: var(--surface) !important;
+      color: var(--ink) !important;
+      border-color: var(--line) !important;
+      font-family: 'Geist', sans-serif !important;
+    }
+    .leaflet-control-zoom a:hover {
+      background: var(--surface-2) !important;
+      color: var(--ohm-deep) !important;
+    }
 
-    .kv { width: 100%; border-collapse: collapse; font-size: .8rem; }
-    .kv td { padding: 2px 4px; vertical-align: top; word-break: break-word; }
-    .kv td:first-child { color: #888; width: 35%; }
-    .kv tr:hover { background: #f0f7fd; }
+    /* ── Details panel ──────────────────────────────────── */
+    #details {
+      border-left: 1px solid var(--line);
+      overflow-y: auto;
+      background: var(--paper);
+      min-width: 0; min-height: 0;
+    }
+    #details::-webkit-scrollbar { width: 8px; }
+    #details::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
 
-    .links a { display: block; padding: .35rem 0; color: #2080d0; text-decoration: none; font-size: .85rem; }
-    .links a:hover { text-decoration: underline; }
-    .links a::before { content: "↗ "; color: #aaa; }
+    #details .empty {
+      padding: 4rem 1.5rem;
+      text-align: center;
+      color: var(--muted);
+      font-family: 'Fraunces', serif;
+      font-style: italic;
+      font-size: 1rem;
+      line-height: 1.5;
+    }
+    #details .empty::before {
+      content: '◌';
+      display: block;
+      font-size: 2rem;
+      margin-bottom: .75rem;
+      color: var(--line-strong);
+    }
 
-    .ohm-actions { display: flex; flex-direction: column; gap: .35rem; }
+    #details .header {
+      padding: 1rem 1.25rem 1rem;
+      background: var(--paper);
+      border-bottom: 1px solid var(--line);
+    }
+    #details .header h2 {
+      margin: 0;
+      font-family: 'Fraunces', serif;
+      font-weight: 450;
+      font-variation-settings: 'opsz' 28, 'SOFT' 60;
+      font-size: 1.2rem;
+      line-height: 1.15;
+      letter-spacing: -.015em;
+      color: var(--ink);
+      word-break: break-word;
+    }
+    #details .header a { color: var(--ohm-deep); text-decoration: none; }
+    #details .header a:hover { text-decoration: underline; text-decoration-color: var(--ohm); }
+    #details .header .sub {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .7rem;
+      color: var(--muted);
+      margin-top: .5rem;
+      display: flex; gap: .4rem; flex-wrap: wrap;
+      align-items: center;
+    }
+
+    #details section {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--line);
+    }
+    #details section:last-child { border-bottom: none; }
+    #details section h3 {
+      margin: 0 0 .7rem 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .65rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .15em;
+      font-weight: 500;
+    }
+
+    .kv {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .8rem;
+    }
+    .kv td {
+      padding: 4px 6px;
+      vertical-align: top;
+      word-break: break-word;
+      border-bottom: 1px solid rgba(217,210,192,.4);
+    }
+    .kv tr:last-child td { border-bottom: none; }
+    .kv td:first-child {
+      color: var(--muted);
+      width: 35%;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .72rem;
+    }
+    .kv td:last-child {
+      color: var(--ink);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .76rem;
+    }
+    .kv tr:hover td { background: var(--surface); }
+
+    .links { display: flex; flex-direction: column; gap: .15rem; }
+    .links a {
+      display: block;
+      padding: .4rem .55rem;
+      color: var(--ohm-deep);
+      text-decoration: none;
+      font-size: .82rem;
+      border-radius: 4px;
+      transition: background .12s;
+    }
+    .links a:hover { background: var(--surface); text-decoration: none; }
+    .links a::before { content: '↗'; color: var(--muted); margin-right: .4rem; font-family: monospace; }
+
+    /* Actions */
+    .ohm-actions { display: flex; flex-direction: column; gap: .45rem; }
     .ohm-actions button, .ohm-actions a.btn {
       display: block;
-      padding: .5rem .75rem;
-      font-size: .8rem;
-      font-weight: 600;
+      padding: .65rem .8rem;
+      font-family: 'Geist', sans-serif;
+      font-size: .82rem;
+      font-weight: 500;
       text-align: left;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      background: #fff;
-      color: #222;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--ink);
       cursor: pointer;
       text-decoration: none;
+      transition: background .15s, border-color .15s, transform .08s;
     }
-    .ohm-actions .btn-primary { background: #1a9850; color: #fff; border-color: #1a9850; }
-    .ohm-actions .btn-primary:hover { background: #166e3d; }
-    .ohm-actions button:hover, .ohm-actions a.btn:hover { background: #f5f5f5; }
-    .ohm-actions .btn-primary:hover { background: #166e3d; color: #fff; }
-    .ohm-actions small { font-size: .65rem; color: #888; font-weight: normal; display: block; margin-top: .1rem; }
-    .toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: .5rem 1rem; border-radius: 4px; font-size: .8rem; opacity: 0; transition: opacity .2s; pointer-events: none; }
-    .toast.show { opacity: .92; }
+    .ohm-actions button:hover, .ohm-actions a.btn:hover {
+      background: var(--surface-2);
+      border-color: var(--line-strong);
+    }
+    .ohm-actions button:active { transform: translateY(1px); }
+    .ohm-actions .btn-primary {
+      background: var(--ohm-deep); color: var(--paper); border-color: var(--ohm-deep);
+    }
+    .ohm-actions .btn-primary:hover {
+      background: var(--ohm); color: var(--paper); border-color: var(--ohm);
+    }
+    .ohm-actions small {
+      font-family: 'Geist', sans-serif;
+      font-size: .7rem;
+      color: var(--muted);
+      font-weight: 400;
+      display: block;
+      margin-top: .2rem;
+      line-height: 1.35;
+    }
+    .ohm-actions .btn-primary small { color: rgba(245,241,232,.7); }
 
-    .signal-badge { display: inline-block; padding: .15rem .5rem; border-radius: 10px; font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
-    .signal-badge.strong  { background: #d0e8d0; color: #1a6028; }
-    .signal-badge.neutral { background: #ddd; color: #555; }
+    /* Toast */
+    .toast {
+      position: fixed; bottom: 1.5rem; left: 50%;
+      transform: translateX(-50%) translateY(8px);
+      background: var(--ink); color: var(--paper);
+      padding: .65rem 1rem; border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .75rem;
+      opacity: 0;
+      transition: opacity .2s, transform .2s;
+      pointer-events: none;
+      box-shadow: 0 8px 24px -8px rgba(40,33,15,.45);
+      z-index: 999;
+    }
+    .toast.show { opacity: .97; transform: translateX(-50%) translateY(0); }
 
-    .loading { padding: 2rem; text-align: center; color: #666; }
-    .err     { padding: 1rem; color: #c00; background: #ffe8e8; font-size: .8rem; }
+    .signal-badge {
+      display: inline-block;
+      padding: .15rem .55rem;
+      border-radius: 999px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .65rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+    }
+    .signal-badge.strong  { background: rgba(44,110,73,.13); color: var(--ohm-deep); }
+    .signal-badge.neutral { background: rgba(138,141,130,.18); color: var(--ink-2); }
+
+    .badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .65rem;
+      font-weight: 500;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+    .badge.node { background: rgba(47,93,143,.12); color: var(--node); }
+    .badge.way  { background: rgba(184,98,60,.13); color: var(--way); }
+
+    .loading {
+      padding: 3rem 1.5rem;
+      text-align: center;
+      color: var(--muted);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .8rem;
+    }
+    .loading::before {
+      content: '';
+      display: inline-block;
+      width: 22px; height: 22px;
+      border: 2px solid var(--line);
+      border-top-color: var(--ohm);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: .85rem;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .err {
+      padding: 1rem 1.25rem;
+      background: #fde7e1;
+      border: 1px solid #d49986;
+      color: #7a2410;
+      font-size: .82rem;
+      border-radius: 6px;
+      margin: 1rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
 
     @media (max-width: 1100px) {
-      #app { grid-template-columns: 300px 1fr 320px; }
+      #app { grid-template-columns: 320px 1fr 340px; }
     }
     @media (max-width: 850px) {
-      #app { grid-template-columns: 280px 1fr; }
+      #app { grid-template-columns: 290px 1fr; }
       #details { display: none; }
     }
   </style>
@@ -113,27 +503,35 @@
   <div id="app">
     <aside id="sidebar">
       <div id="header">
-        <h1>OSM deleted data as candidates for OHM</h1>
+        <div class="brand"><span class="dot"></span>Atlas of the Erased</div>
+        <h1>What the map <em>forgot.</em></h1>
         <div class="stats" id="stats">Loading…</div>
+        <div class="nav">
+          <a href="./stats.html">◐ open dashboard</a>
+        </div>
       </div>
+
       <div id="filters">
         <div class="row">
           <label><input type="checkbox" id="f-strong" checked> strong</label>
           <label><input type="checkbox" id="f-neutral" checked> neutral</label>
-          <span style="color:#ddd;">|</span>
+          <span class="divider"></span>
           <label><input type="checkbox" id="f-node" checked> nodes</label>
           <label><input type="checkbox" id="f-way" checked> ways</label>
         </div>
         <div class="search-wrap">
-          <input type="text" id="f-search" placeholder="search in tags or changeset comment (e.g. demolish)" />
+          <input type="text" id="f-search" placeholder="search tags or changeset comment…" />
         </div>
-        <div class="hint">tip: try <code>demolish</code>, <code>ruins</code>, <code>building=yes</code>, <code>highway</code></div>
+        <div class="hint">try <code>demolish</code> · <code>ruins</code> · <code>building=yes</code> · <code>highway</code></div>
       </div>
+
       <div id="list" class="loading">Loading DuckDB-WASM…</div>
     </aside>
+
     <div id="map"></div>
+
     <aside id="details">
-      <div class="empty" id="details-empty">Click a candidate to see its details.</div>
+      <div class="empty" id="details-empty">Select a candidate from the list to read its biography.</div>
       <div id="details-content" hidden></div>
     </aside>
   </div>
@@ -144,17 +542,14 @@
 
     // Dev: serve from /data/ next to this page (same origin, no CORS issues).
     // Prod: replace with a CORS-enabled CDN/bucket URL.
-    //   const DATA_BASE = "https://planet.openhistoricalmap.org/historical-osm-data/sample_001_enriched";  // CORS-blocked
-    // DuckDB-WASM needs an absolute URL — relative paths get treated as a
-    // filesystem path that doesn't exist in the browser sandbox.
     const DATA_BASE = `${window.location.origin}/data/sample_001_enriched`;
-    const NODES_URL = `${DATA_BASE}/type=node/part-00001-86d77634-f9f4-4fac-8351-6d3ad2e4c1cd.c000.snappy.parquet`;
-    const WAYS_URL  = `${DATA_BASE}/type=way/part-00000-86d77634-f9f4-4fac-8351-6d3ad2e4c1cd.c000.snappy.parquet`;
+    const NODES_URL = `${DATA_BASE}/node/data.bin`;
+    const WAYS_URL  = `${DATA_BASE}/way/data.bin`;
 
     const OVERPASS = "https://overpass-api.de/api/interpreter";
     const OSM_OBJ_URL = (type, id) => `https://www.openstreetmap.org/${type}/${id}`;
 
-    const map = L.map('map').setView([0, 0], 2);
+    const map = L.map('map', { zoomControl: true }).setView([0, 0], 2);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap', maxZoom: 19,
     }).addTo(map);
@@ -169,9 +564,6 @@
     list.textContent = 'Loading DuckDB-WASM…';
 
     // ── DuckDB init ──────────────────────────────────────────
-    // Workers can't load directly from a CDN due to cross-origin rules,
-    // so we wrap the worker URL in a same-origin blob that uses
-    // importScripts() to pull the actual worker code (allowed inside workers).
     const bundles = duckdb.getJsDelivrBundles();
     const bundle = await duckdb.selectBundle(bundles);
     const workerUrl = URL.createObjectURL(
@@ -183,11 +575,8 @@
     URL.revokeObjectURL(workerUrl);
     const conn = await db.connect();
 
-    list.textContent = 'Reading parquet from S3…';
+    list.textContent = 'Reading parquet…';
 
-    // ── Load both parquet files ──────────────────────────────
-    // hive_partitioning=false → don't auto-derive `type` from the URL path,
-    // we add it explicitly with a literal so the UNION columns line up cleanly.
     let result;
     try {
       result = await conn.query(`
@@ -221,7 +610,8 @@
     }
 
     state.rows = result.toArray().map(row => row.toJSON());
-    stats.textContent = `${state.rows.length} candidates loaded`;
+    stats.innerHTML = `<b>${state.rows.length.toLocaleString()}</b> candidatos cargados`;
+    list.classList.remove('loading'); // drop spinner pseudo-element + padding
     bindFilters();
     render();
 
@@ -253,7 +643,7 @@
         return true;
       });
 
-      stats.textContent = `${state.filtered.length} / ${state.rows.length} candidates`;
+      stats.innerHTML = `<b>${state.filtered.length.toLocaleString()}</b> / ${state.rows.length.toLocaleString()} candidates`;
       list.innerHTML = '';
       const frag = document.createDocumentFragment();
       state.filtered.slice(0, 500).forEach(r => frag.appendChild(itemEl(r)));
@@ -261,7 +651,8 @@
       if (state.filtered.length > 500) {
         const more = document.createElement('div');
         more.className = 'loading';
-        more.textContent = `+${state.filtered.length - 500} more (refine filters)`;
+        more.style.padding = '1rem';
+        more.textContent = `+${state.filtered.length - 500} more — refine filters`;
         list.appendChild(more);
       }
     }
@@ -281,8 +672,6 @@
       return {};
     }
 
-    // DuckDB-WASM returns BIGINT as BigInt and TIMESTAMP either as Date or
-    // BigInt micro/milliseconds. Coerce safely.
     function toJsNum(v) {
       if (v == null) return null;
       if (typeof v === 'bigint') return Number(v);
@@ -298,8 +687,6 @@
       if (v == null) return null;
       if (v instanceof Date) return v;
       if (typeof v === 'bigint') {
-        // DuckDB usually exposes timestamps in milliseconds; if the value is
-        // suspiciously large assume microseconds.
         const n = Number(v);
         return new Date(n > 1e15 ? n / 1000 : n);
       }
@@ -319,10 +706,10 @@
           <span class="badge ${r.type}">${r.type}</span>
           ${r.comment_signal === 'strong' ? '<span class="badge strong">★ strong</span>' : ''}
           <span>v${toJsStr(r.num_versions)}</span>
-          <span>${toJsStr(r.distinct_users)}u</span>
-          <span>${shortDate(r.deleted_at)}</span>
+          <span>· ${toJsStr(r.distinct_users)}u</span>
+          <span>· ${shortDate(r.deleted_at)}</span>
         </div>
-        ${r.cs_comment ? `<div class="comment">"${escape(r.cs_comment)}"</div>` : ''}
+        ${r.cs_comment ? `<div class="comment">${escape(r.cs_comment)}</div>` : ''}
       `;
       div.addEventListener('click', () => activate(r, div));
       return div;
@@ -351,7 +738,6 @@
       const name = tags.name || tags['name:es'] || tags['name:en'] || `${r.type} ${idStr}`;
       const signal = r.comment_signal || 'neutral';
 
-      // Header
       const headerHTML = `
         <div class="header">
           <h2>${escape(name)}</h2>
@@ -362,17 +748,15 @@
           </div>
         </div>`;
 
-      // Tags
       const tagEntries = Object.entries(tags);
       const tagsHTML = tagEntries.length === 0
-        ? '<p style="color:#888; font-size:.85rem; margin:0;">(no tags)</p>'
+        ? '<p style="color:var(--muted); font-size:.82rem; margin:0; font-style:italic;">(no tags)</p>'
         : `<table class="kv">${
             tagEntries.map(([k, v]) =>
               `<tr><td>${escape(k)}</td><td>${escape(v)}</td></tr>`
             ).join('')
           }</table>`;
 
-      // Stats
       const statsHTML = `<table class="kv">
         <tr><td>versions</td><td>${toJsStr(r.num_versions)}</td></tr>
         <tr><td>distinct users</td><td>${toJsStr(r.distinct_users)}</td></tr>
@@ -381,17 +765,15 @@
         <tr><td>age at deletion</td><td>${toJsStr(r.age_at_deletion_days)} days</td></tr>
       </table>`;
 
-      // Changeset (deletion)
       const csId = toJsStr(r.last_changeset);
       const csHTML = `<table class="kv">
-        <tr><td>changeset</td><td><a href="https://www.openstreetmap.org/changeset/${csId}" target="_blank">${csId}</a></td></tr>
-        ${r.cs_user    ? `<tr><td>user</td><td><a href="https://www.openstreetmap.org/user/${encodeURIComponent(toJsStr(r.cs_user))}" target="_blank">${escape(r.cs_user)}</a></td></tr>` : ''}
+        <tr><td>changeset</td><td><a href="https://www.openstreetmap.org/changeset/${csId}" target="_blank" style="color:var(--ohm-deep);text-decoration:none;">${csId}</a></td></tr>
+        ${r.cs_user    ? `<tr><td>user</td><td><a href="https://www.openstreetmap.org/user/${encodeURIComponent(toJsStr(r.cs_user))}" target="_blank" style="color:var(--ohm-deep);text-decoration:none;">${escape(r.cs_user)}</a></td></tr>` : ''}
         ${r.cs_created_by ? `<tr><td>editor</td><td>${escape(r.cs_created_by)}</td></tr>` : ''}
         ${r.cs_source  ? `<tr><td>source</td><td>${escape(r.cs_source)}</td></tr>` : ''}
-        ${r.cs_comment ? `<tr><td>comment</td><td><i>${escape(r.cs_comment)}</i></td></tr>` : '<tr><td>comment</td><td style="color:#aaa;">(empty)</td></tr>'}
+        ${r.cs_comment ? `<tr><td>comment</td><td><i>${escape(r.cs_comment)}</i></td></tr>` : '<tr><td>comment</td><td style="color:var(--muted);">(empty)</td></tr>'}
       </table>`;
 
-      // Links / actions
       const osmchaUrl  = `https://osmcha.org/changesets/${csId}`;
       const overpassUrl = `https://overpass-turbo.eu/?Q=${encodeURIComponent(`[date:"${toJsDate(r.deleted_at)?.toISOString().replace(/\.\d{3}Z$/, 'Z') || ''}"];${r.type}(${idStr});out geom;`)}&R`;
       const historyUrl = `https://www.openstreetmap.org/${r.type}/${idStr}/history`;
@@ -402,30 +784,28 @@
         <a href="${overpassUrl}" target="_blank">Inspect on Overpass turbo</a>
       </div>`;
 
-      // Send to OHM — buttons (handlers wired later via data-action)
       const ohmHTML = `<div class="ohm-actions">
         <button data-action="ohm-id" class="btn-primary">
-          ✏️ Open OHM iD at this location
+          ✎ Open OHM iD at this location
           <small>centers map at the object so you can recreate it manually</small>
         </button>
         <button data-action="copy-tags">
-          📋 Copy tags (${tagEntries.length})
+          ❏ Copy tags (${tagEntries.length})
           <small>paste into OHM iD's "All tags" panel</small>
         </button>
         <button data-action="josm-load">
-          🛠️ JOSM: load deleted version via Overpass
+          ⌬ JOSM: load deleted version via Overpass
           <small>fetches the last visible state with timestamp; requires JOSM with remote control on :8111</small>
         </button>
         <a href="https://api.openstreetmap.org/api/0.6/${r.type}/${idStr}/${toJsStr(r.last_good_version)}" target="_blank" class="btn">
-          📄 View deleted version (OSM XML)
+          ☰ View deleted version (OSM XML)
           <small>raw data of the last visible version</small>
         </a>
       </div>`;
 
-      // Compose
       const html = `
         ${headerHTML}
-        <section><h3>Tags (${tagEntries.length})</h3>${tagsHTML}</section>
+        <section><h3>Tags <span style="color:var(--ink);font-weight:600;">· ${tagEntries.length}</span></h3>${tagsHTML}</section>
         <section><h3>Stats</h3>${statsHTML}</section>
         <section><h3>Deletion changeset</h3>${csHTML}</section>
         <section><h3>Send to OHM</h3>${ohmHTML}</section>
@@ -437,7 +817,6 @@
       content.hidden = false;
       content.innerHTML = html;
 
-      // Wire OHM action buttons
       content.querySelector('[data-action="ohm-id"]').addEventListener('click', () => openOhmId(r, tags));
       content.querySelector('[data-action="copy-tags"]').addEventListener('click', () => copyTags(tags));
       content.querySelector('[data-action="josm-load"]').addEventListener('click', () => josmLoad(r));
@@ -445,7 +824,6 @@
 
     // ── OHM action handlers ───────────────────────────────────
     async function openOhmId(r, tags) {
-      // Need a coordinate. Prefer the active layer's bounds, else parquet.
       let lat, lon, zoom = 18;
       if (state.active && state.active === r) {
         const layers = featureLayer.getLayers();
@@ -492,8 +870,6 @@
         toast('Invalid deleted_at — cannot build Overpass query');
         return;
       }
-      // Query Overpass at the timestamp BEFORE deletion so JOSM gets the
-      // last visible version (and recurses to include referenced nodes).
       const dt = new Date(deletedDate.getTime() - 1000);
       const dateStr = dt.toISOString().replace(/\.\d{3}Z$/, 'Z');
       const overpassQuery = `[out:xml][date:"${dateStr}"];${r.type}(${idStr});(._;>;);out meta;`;
@@ -518,7 +894,7 @@
       t.textContent = msg;
       t.classList.add('show');
       clearTimeout(t._timer);
-      t._timer = setTimeout(() => t.classList.remove('show'), 2200);
+      t._timer = setTimeout(() => t.classList.remove('show'), 2400);
     }
 
     // ── Map ──────────────────────────────────────────────────
@@ -529,9 +905,6 @@
                   'lat:', r.last_lat, 'lon:', r.last_lon,
                   'tags keys:', Object.keys(tags).length);
 
-      // Always ask Overpass first — it knows the canonical geometry as it
-      // existed right before deletion. Fall back to the parquet coords for
-      // nodes if Overpass can't serve us (rate-limit, missing version).
       let geom;
       try {
         geom = await fetchOverpassGeometry(r);
@@ -554,8 +927,8 @@
         throw new Error('No geometry available');
       }
 
-      const stroke = r.comment_signal === 'strong' ? '#15803d' : '#1d4ed8';
-      const fill   = r.comment_signal === 'strong' ? '#22c55e' : '#3b82f6';
+      const stroke = r.comment_signal === 'strong' ? '#1f4d33' : '#2f5d8f';
+      const fill   = r.comment_signal === 'strong' ? '#4c956c' : '#5a86b3';
       let layer;
       if (geom.kind === 'point') {
         layer = L.marker(geom.coords);
@@ -569,7 +942,7 @@
           weight: 3,
           opacity: 1,
           fillColor: fill,
-          fillOpacity: 0.6,
+          fillOpacity: 0.55,
         });
         map.fitBounds(layer.getBounds(), { maxZoom: 18, padding: [40, 40] });
       } else {
@@ -585,7 +958,6 @@
       const cacheKey = `${r.type}/${idStr}/${toJsStr(r.deleted_at)}`;
       if (state.geomCache.has(cacheKey)) return state.geomCache.get(cacheKey);
 
-      // Query 1 second BEFORE the deletion: that's the last visible state.
       const deletedDate = toJsDate(r.deleted_at);
       if (!deletedDate) throw new Error(`Invalid deleted_at: ${r.deleted_at}`);
       const dt = new Date(deletedDate.getTime() - 1000);
@@ -612,7 +984,6 @@
       } else if (el.type === 'way' && el.geometry && el.geometry.length > 0) {
         const coords = el.geometry.map(g => [g.lat, g.lon]);
         if (coords.length === 1) {
-          // degenerate way — show as point
           result = { kind: 'point', coords: coords[0] };
         } else {
           const isClosed = coords.length > 2 &&
